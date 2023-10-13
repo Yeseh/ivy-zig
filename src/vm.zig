@@ -2,6 +2,8 @@ const std = @import("std");
 const common = @import("common.zig");
 const debug = @import("debug.zig");
 const chunk = @import("chunk.zig");
+const compiler = @import("compiler.zig");
+const Scanner = @import("scanner.zig").Scanner;
 
 const Chunk = chunk.Chunk;
 const ChunkError = chunk.ChunkError;
@@ -25,19 +27,29 @@ pub const VirtualMachine = struct {
     alloc: std.mem.Allocator,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
-        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = undefined };
+        var stack = try std.ArrayListUnmanaged(Value).initCapacity(alloc, STACK_MAX);
+        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack };
     }
 
-    pub fn deinit(self: *Self) !void {
-        self.stack.deinit(self.allocator);
+    pub fn deinit(self: *Self) void {
+        self.stack.deinit(self.alloc);
     }
 
     pub fn free() !void {}
 
-    pub fn interpret(self: *Self, cnk: *Chunk) !void {
+    pub fn interpret(self: *Self, source: []u8) !void {
+        try compiler.compile(self.alloc, source);
+    }
+
+    fn compile(self: *Self, source: []u8) !void {
+        var scanner = try Scanner.init(self.alloc, source);
+        _ = scanner;
+        return chunk;
+    }
+
+    pub fn interpret_chunk(self: *Self, cnk: *Chunk) !void {
         self.chunk = cnk;
         self.ip = self.chunk.get_op_ptr();
-        self.stack = try std.ArrayListUnmanaged(Value).initCapacity(self.alloc, STACK_MAX);
 
         run: while (true) {
             if (DEBUG) {
