@@ -24,7 +24,8 @@ pub const TokenType = enum {
     PLUS,
     SEMICOLON,
     STAR,
-    SLASH,
+    FSLASH,
+    BSLASH,
 
     // One or two char
     BANG,
@@ -84,8 +85,6 @@ pub const Scanner = struct {
     }
 
     pub fn scan_token(self: *Self) Token {
-        std.debug.print("current: {c}\n", .{self.current[0]});
-
         self.skip_whitespace();
         self.start = self.current;
         if (self.is_end()) {
@@ -111,7 +110,9 @@ pub const Scanner = struct {
             '-' => return self.make_token(TokenType.MINUS),
             '*' => return self.make_token(TokenType.STAR),
             '+' => return self.make_token(TokenType.PLUS),
-            '/' => return self.make_token(TokenType.SLASH),
+            '/' => return self.make_token(TokenType.FSLASH),
+            '\\' => return self.make_token(TokenType.BSLASH),
+            '"' => return self.string(),
             '!' => return self.make_token(ite(self.match('='), TokenType.BANG_EQUAL, TokenType.BANG)),
             '=' => return self.make_token(ite(self.match('='), TokenType.EQUAL_EQUAL, TokenType.EQUAL)),
             '<' => return self.make_token(ite(self.match('='), TokenType.LESS_EQUAL, TokenType.LESS)),
@@ -134,6 +135,7 @@ pub const Scanner = struct {
         return self.current[1..end];
     }
 
+    /// match multiple chars for complex tokens
     fn matchN(self: *Self, expected: []const u8) bool {
         if (self.is_end()) {
             return false;
@@ -188,12 +190,32 @@ pub const Scanner = struct {
         }
     }
 
-    fn iden(self: *Self) Token {
-        var pk = self.peek();
-        while (std.ascii.isAlphabetic(pk) or std.ascii.isDigit(pk)) {
-            std.debug.print("pk: {c}\n", .{pk});
+    // TODO: Support string interpl
+    fn string(self: *Self) Token {
+        while (self.peek() != '"' and !self.is_end()) {
+            // Handle escape chars
+            if (std.mem.eql(u8, self.peekN(2), "\\\"")) {
+                _ = self.adv();
+            }
+
+            if (self.peek() == '\n') {
+                self.line += 1;
+            }
+
             _ = self.adv();
-            std.debug.print("pk: {c}\n", .{self.peek()});
+        }
+
+        if (self.is_end()) {
+            return self.error_token("Unterminated string.");
+        }
+
+        _ = self.adv();
+        return self.make_token(TokenType.STRING);
+    }
+
+    fn iden(self: *Self) Token {
+        while (std.ascii.isAlphabetic(self.peek()) or std.ascii.isDigit(self.peek())) {
+            _ = self.adv();
         }
 
         var tt = switch (self.start[0]) {
@@ -208,22 +230,30 @@ pub const Scanner = struct {
             's' => self.check_keyword(1, 4, "uper", TokenType.SUPER),
             'v' => self.check_keyword(1, 2, "ar", TokenType.VAR),
             'w' => self.check_keyword(1, 4, "hile", TokenType.WHILE),
-            'f' => if (self.current_diff() > 1) {
-                switch (self.start[1]) {
-                    'a' => self.check_keyword(2, 3, "lse", TokenType.FALSE),
-                    'o' => self.check_keyword(2, 1, "r", TokenType.FOR),
-                    'u' => self.check_keyword(2, 1, "n", TokenType.FUN),
-                    else => unreachable,
+            'f' => blk: {
+                if (self.current_diff() > 1) {
+                    break :blk switch (self.start[1]) {
+                        'a' => self.check_keyword(2, 3, "lse", TokenType.FALSE),
+                        'o' => self.check_keyword(2, 1, "r", TokenType.FOR),
+                        'u' => self.check_keyword(2, 1, "n", TokenType.FUN),
+                        else => TokenType.IDENTIFIER,
+                    };
+                } else {
+                    break :blk TokenType.IDENTIFIER;
                 }
             },
-            't' => if (self.current_diff() > 1) {
-                switch (self.start[1]) {
-                    'h' => self.check_keyword(2, 2, "is", TokenType.THIS),
-                    'r' => self.check_keyword(2, 2, "ue", TokenType.TRUE),
-                    else => unreachable,
+            't' => blk: {
+                if (self.current_diff() > 1) {
+                    break :blk switch (self.start[1]) {
+                        'h' => self.check_keyword(2, 2, "is", TokenType.THIS),
+                        'r' => self.check_keyword(2, 2, "ue", TokenType.TRUE),
+                        else => TokenType.IDENTIFIER,
+                    };
+                } else {
+                    break :blk TokenType.IDENTIFIER;
                 }
             },
-            else => unreachable,
+            else => TokenType.IDENTIFIER,
         };
 
         return self.make_token(tt);
@@ -234,10 +264,11 @@ pub const Scanner = struct {
     }
 
     fn check_keyword(self: *Self, start: u8, length: u8, rest: []const u8, ty: TokenType) TokenType {
-        var bLen = self.current_diff() == start + length;
-        var bEq = std.mem.eql(u8, self.start[start..], rest);
+        var len = self.current_diff() == start + length;
+        var cmp = self.start[start .. start + length];
+        var eql = std.mem.eql(u8, cmp, rest);
 
-        if (bLen and bEq) {
+        if (len and eql) {
             return ty;
         }
 
@@ -293,10 +324,10 @@ pub const Scanner = struct {
 test "Scanner.basic" {
     const alloc = std.testing.allocator;
     {
-        var scan = try Scanner.init(alloc, "(){};,.+-*/");
+        var scan = try Scanner.init(alloc, "(){};,.+-*/\\");
         var expected = [_]TokenType{
             .LPAREN, .RPAREN, .LBRACE, .RBRACE, .SEMICOLON, .COMMA, .DOT,
-            .PLUS,   .MINUS,  .STAR,   .SLASH,  .EOF,
+            .PLUS,   .MINUS,  .STAR,   .FSLASH, .BSLASH,    .EOF,
         };
 
         var token: Token = undefined;
@@ -331,7 +362,7 @@ test "Scanner.basic" {
         var token: Token = undefined;
         for (expected) |tt| {
             token = scan.scan_token();
-            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }
@@ -347,7 +378,7 @@ test "Scanner.basic" {
         var token: Token = undefined;
         for (expected) |tt| {
             token = scan.scan_token();
-            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }
