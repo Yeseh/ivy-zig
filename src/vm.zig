@@ -3,7 +3,7 @@ const common = @import("common.zig");
 const debug = @import("debug.zig");
 const chunk = @import("chunk.zig");
 const compiler = @import("compiler.zig");
-const Compiler = @import("compiler.zig").Compiler;
+const Compiler = compiler.Compiler;
 const Scanner = @import("scanner.zig").Scanner;
 
 const Chunk = chunk.Chunk;
@@ -40,16 +40,15 @@ pub const VirtualMachine = struct {
 
     pub fn interpret(self: *Self, source: []const u8) !void {
         var cnk: Chunk = try Chunk.init(self.alloc);
-        defer cnk.deinit();
-        errdefer cnk.deinit(self.alloc);
+        errdefer cnk.deinit();
 
         // TODO: Do this at comptime/make these global?
-        var scanner = try Scanner.init(self.alloc, source);
-        var comp = try Compiler.init(self.alloc, scanner);
-        var compiled = try comp.compile(source, &cnk);
+        var scanner = try Scanner.init(&self.alloc, source);
+        _ = compiler.init_compiler(&self.alloc, &scanner);
+        var compiled = try compiler.compile(&cnk);
 
         if (!compiled) {
-            cnk.deinit(self.alloc);
+            cnk.deinit();
             return InterpreterError.CompiletimeError;
         }
 

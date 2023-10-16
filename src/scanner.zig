@@ -75,12 +75,12 @@ fn ite(cond: bool, then: TokenType, els: TokenType) TokenType {
 pub const Scanner = struct {
     const Self = @This();
 
-    alloc: std.mem.Allocator,
+    alloc: *std.mem.Allocator,
     start: []const u8,
     current: []const u8,
     line: i32,
 
-    pub fn init(alloc: std.mem.Allocator, source: []const u8) !Self {
+    pub fn init(alloc: *std.mem.Allocator, source: []const u8) !Self {
         return Self{ .alloc = alloc, .start = source, .current = source, .line = 1 };
     }
 
