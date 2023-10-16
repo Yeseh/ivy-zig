@@ -76,26 +76,29 @@ pub const Scanner = struct {
     const Self = @This();
 
     alloc: std.mem.Allocator,
-    start: [:0]const u8,
-    current: [:0]const u8,
+    start: []const u8,
+    current: []const u8,
     line: i32,
 
-    pub fn init(alloc: std.mem.Allocator, source: [:0]const u8) !Self {
+    pub fn init(alloc: std.mem.Allocator, source: []const u8) !Self {
         return Self{ .alloc = alloc, .start = source, .current = source, .line = 1 };
     }
 
     pub fn scan_token(self: *Self) Token {
-        self.skip_whitespace();
-        self.start = self.current;
         if (self.is_end()) {
             return self.make_token(TokenType.EOF);
         }
+
+        self.skip_whitespace();
+        self.start = self.current;
+        std.debug.print("start: {s}, cur: {s}\n", .{ self.start, self.current });
 
         const c = self.adv();
         if (std.ascii.isAlphabetic(c) or c == '_') {
             return self.iden();
         }
         if (std.ascii.isDigit(c)) {
+            std.debug.print("cur: {c}\n", .{c});
             return self.number();
         }
 
@@ -214,7 +217,7 @@ pub const Scanner = struct {
     }
 
     fn iden(self: *Self) Token {
-        while (std.ascii.isAlphabetic(self.peek()) or std.ascii.isDigit(self.peek())) {
+        while (!self.is_end() and (std.ascii.isAlphabetic(self.peek()) or std.ascii.isDigit(self.peek()))) {
             _ = self.adv();
         }
 
@@ -285,7 +288,7 @@ pub const Scanner = struct {
 
         if (pk == '.' and next.len > 0 and std.ascii.isDigit(next[0])) {
             _ = self.adv();
-            while (std.ascii.isDigit(self.peek())) {
+            while (!self.is_end() and std.ascii.isDigit(self.peek())) {
                 _ = self.adv();
             }
         }
@@ -293,7 +296,7 @@ pub const Scanner = struct {
         return self.make_token(TokenType.NUMBER);
     }
 
-    fn error_token(self: *Self, msg: [:0]const u8) Token {
+    fn error_token(self: *Self, msg: []const u8) Token {
         return Token{
             .type = TokenType.ERROR,
             .lex = msg,
@@ -317,7 +320,7 @@ pub const Scanner = struct {
     }
 
     fn is_end(self: *Self) bool {
-        return self.current[0] == 0;
+        return self.current.len == 0;
     }
 };
 
