@@ -3,6 +3,7 @@ const common = @import("common.zig");
 const debug = @import("debug.zig");
 const chunk = @import("chunk.zig");
 const compiler = @import("compiler.zig");
+const Compiler = @import("compiler.zig").Compiler;
 const Scanner = @import("scanner.zig").Scanner;
 
 const Chunk = chunk.Chunk;
@@ -37,14 +38,78 @@ pub const VirtualMachine = struct {
 
     pub fn free() !void {}
 
-    pub fn interpret(self: *Self, source: []u8) !void {
-        try compiler.compile(self.alloc, source);
+    pub fn interpret(self: *Self, source: []const u8) !void {
+        var cnk: Chunk = try Chunk.init(self.alloc);
+        defer cnk.deinit();
+        errdefer cnk.deinit(self.alloc);
+
+        // TODO: Do this at comptime/make these global?
+        var scanner = try Scanner.init(self.alloc, source);
+        var comp = try Compiler.init(self.alloc, scanner);
+        var compiled = try comp.compile(source, &cnk);
+
+        if (!compiled) {
+            cnk.deinit(self.alloc);
+            return InterpreterError.CompiletimeError;
+        }
+
+        self.chunk = &cnk;
+        self.ip = self.chunk.get_op_ptr();
+
+        try self.run();
     }
 
-    fn compile(self: *Self, source: []u8) !void {
-        var scanner = try Scanner.init(self.alloc, source);
-        _ = scanner;
-        return chunk;
+    pub fn run(self: *Self) !void {
+        run: while (true) {
+            if (DEBUG) {
+                const offset = @ptrToInt(self.ip) - @ptrToInt(self.chunk.get_op_ptr());
+
+                std.debug.print(" \n", .{});
+                for (0..self.stack.items.len) |i| {
+                    var item = &self.stack.items[i];
+                    std.debug.print("[ {d} {} ]\n", .{ item.*, item });
+                }
+
+                _ = debug.disassemble_instruction(self.chunk, offset) catch |err| {
+                    std.debug.print("{any}", .{err});
+                    return InterpreterError.RuntimeError;
+                };
+            }
+
+            const byte = self.read_byte();
+            const instruction = @intToEnum(OpCode, byte);
+            switch (instruction) {
+                .OP_CONSTANT => {
+                    const constant = self.read_constant();
+                    try self.stack.append(self.alloc, constant);
+                },
+                .OP_NEGATE => {
+                    const value = -self.stack.pop();
+                    try self.stack.append(self.alloc, value);
+                },
+                .OP_ADD => {
+                    try self.binary_operation(instruction);
+                },
+                .OP_SUBTRACT => {
+                    try self.binary_operation(instruction);
+                },
+                .OP_DIVIDE => {
+                    try self.binary_operation(instruction);
+                },
+                .OP_MULTIPLY => {
+                    try self.binary_operation(instruction);
+                },
+                .OP_RETURN => {
+                    const value = self.stack.pop();
+                    std.debug.print("---\nRETURN: {d}\n---\n", .{value});
+                    break :run;
+                },
+                //else => {
+                //    std.debug.print("Unknown OP byte {d}\n", .{instruction});
+                //   return InterpreterError.RuntTimeError;
+                //},
+            }
+        }
     }
 
     pub fn interpret_chunk(self: *Self, cnk: *Chunk) !void {
