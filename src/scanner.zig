@@ -5,14 +5,14 @@ pub const Token = struct {
 
     type: TokenType,
     lex: []const u8,
-    line: i32,
+    line: u32,
 
     pub fn dump(self: *Self) void {
         std.debug.print("{} '{s}'", .{ @enumToInt(self.type), self.lex });
     }
 };
 
-pub const TokenType = enum {
+pub const TokenType = enum(u8) {
     // Single char
     LPAREN,
     RPAREN,
@@ -22,10 +22,10 @@ pub const TokenType = enum {
     DOT,
     MINUS,
     PLUS,
-    SEMICOLON,
     STAR,
     FSLASH,
     BSLASH,
+    SEMICOLON,
 
     // One or two char
     BANG,
@@ -78,7 +78,7 @@ pub const Scanner = struct {
     alloc: *std.mem.Allocator,
     start: []const u8,
     current: []const u8,
-    line: i32,
+    line: u32,
 
     pub fn init(alloc: *std.mem.Allocator, source: []const u8) !Self {
         return Self{ .alloc = alloc, .start = source, .current = source, .line = 1 };
@@ -91,14 +91,12 @@ pub const Scanner = struct {
 
         self.skip_whitespace();
         self.start = self.current;
-        std.debug.print("start: {s}, cur: {s}\n", .{ self.start, self.current });
 
         const c = self.adv();
         if (std.ascii.isAlphabetic(c) or c == '_') {
             return self.iden();
         }
         if (std.ascii.isDigit(c)) {
-            std.debug.print("cur: {c}\n", .{c});
             return self.number();
         }
 
@@ -382,6 +380,22 @@ test "Scanner.basic" {
         for (expected) |tt| {
             token = scan.scan_token();
             //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            if (token.type == TokenType.ERROR) {
+                std.debug.print(" '{s}'\n", .{token.lex});
+            }
+            try std.testing.expect(token.type == tt);
+        }
+    }
+    {
+        var scan = try Scanner.init(alloc, "1+2/3*4-5");
+        var expected = [_]TokenType{
+            .NUMBER, .PLUS, .NUMBER, .FSLASH, .NUMBER, .STAR, .NUMBER, .MINUS, .NUMBER, .EOF,
+        };
+
+        var token: Token = undefined;
+        for (expected) |tt| {
+            token = scan.scan_token();
+            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }
