@@ -59,6 +59,6 @@ pub fn simple_instruction(name: []const u8, offset: usize) usize {
 
 pub fn constant_instruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
     var constant = chunk.get_op(offset + 1);
-    std.debug.print("{s} {d} '{d}'\n", .{ name, constant, chunk.get_constant(constant) });
+    std.debug.print("{s} {d} '{d}'\n", .{ name, constant, chunk.get_constant(constant).* });
     return offset + 2;
 }

@@ -43,14 +43,11 @@ pub const VirtualMachine = struct {
         defer cnk.deinit();
 
         // TODO: Do this at comptime/make these global?
-        std.debug.print("Compiling {s}\n", .{source});
-
         var scanner = try Scanner.init(self.alloc, source);
-        var comp = Compiler.init(&self.alloc, &scanner);
+        var comp = Compiler.init(self.alloc, &scanner);
         var compiled = try comp.compile(&cnk);
 
         if (!compiled) {
-            cnk.deinit();
             return InterpreterError.CompiletimeError;
         }
 

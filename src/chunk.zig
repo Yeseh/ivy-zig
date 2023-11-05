@@ -10,6 +10,17 @@ pub const ChunkError = error{OperationOutOfBounds};
 pub const ChunkList = ArrayList(Chunk);
 pub const LineInfo = struct { line: u32, inst_count: u32 };
 
+pub const Instruction = union(enum) {
+    const Self = @This();
+
+    op: u8,
+    line: u32,
+
+    pub fn init(op: u8, line: u32) Self {
+        return Self{ .op = op, .line = line };
+    }
+};
+
 pub const Chunk = struct {
     const Self = @This();
 

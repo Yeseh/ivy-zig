@@ -185,7 +185,10 @@ pub const Scanner = struct {
             '=' => self.make_token(ite(self.match('='), TokenType.EQUAL_EQUAL, TokenType.EQUAL)),
             '<' => self.make_token(ite(self.match('='), TokenType.LESS_EQUAL, TokenType.LESS)),
             '>' => self.make_token(ite(self.match('='), TokenType.GREATER_EQUAL, TokenType.GREATER)),
-            else => self.error_token("Unexpected character."),
+            else => bla: {
+                std.debug.print("Unexpected character '{c}'.", .{c});
+                break :bla self.error_token("Unexpected character");
+            },
         };
         return token;
     }
@@ -449,7 +452,7 @@ test "Scanner.basic" {
         var token: Token = undefined;
         for (expected) |tt| {
             token = scan.scan_token();
-            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }
