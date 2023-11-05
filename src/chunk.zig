@@ -3,8 +3,9 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const common = @import("common.zig");
 const types = @import("types.zig");
+const String = @import("object/String.zig");
 const OpCode = common.OpCode;
-const Value = common.IvyType;
+const IvyType = common.IvyType;
 
 const print = std.debug.print;
 pub const ChunkError = error{OperationOutOfBounds};
@@ -28,10 +29,10 @@ pub const Chunk = struct {
     alloc: Allocator,
     code: std.ArrayListUnmanaged(u8),
     lines: std.ArrayListUnmanaged(LineInfo),
-    constants: std.ArrayListUnmanaged(Value),
+    constants: std.ArrayListUnmanaged(IvyType),
 
     pub fn init(alloc: Allocator) !Self {
-        var constants = try std.ArrayListUnmanaged(Value).initCapacity(alloc, 8);
+        var constants = try std.ArrayListUnmanaged(IvyType).initCapacity(alloc, 8);
         var code = try std.ArrayListUnmanaged(u8).initCapacity(alloc, 8);
         var lineInfo = try std.ArrayListUnmanaged(LineInfo).initCapacity(alloc, 8);
         return Self{
@@ -58,11 +59,11 @@ pub const Chunk = struct {
         return self.lines.items.ptr;
     }
 
-    pub fn get_constant(self: *Self, idx: usize) *Value {
+    pub fn get_constant(self: *Self, idx: usize) *IvyType {
         return &self.constants.items[idx];
     }
 
-    pub fn add_constant(self: *Self, val: Value) Allocator.Error!usize {
+    pub fn add_constant(self: *Self, val: IvyType) Allocator.Error!usize {
         try self.constants.append(self.alloc, val);
         return self.constants.items.len - 1;
     }
@@ -107,6 +108,16 @@ pub const Chunk = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        for (self.constants.items) |ty| {
+            switch (ty) {
+                .object => {
+                    switch (ty.object.ty) {
+                        .String => String.from_obj(ty.object).deinit(self.alloc),
+                    }
+                },
+                else => {},
+            }
+        }
         self.constants.deinit(self.alloc);
         self.code.deinit(self.alloc);
         self.lines.deinit(self.alloc);

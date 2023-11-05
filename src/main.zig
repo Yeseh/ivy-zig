@@ -9,9 +9,9 @@ const List = common.List;
 const Chunk = chunk.Chunk;
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var gpa = std.heap.GeneralPurposeAllocator(.{});
+    defer gpa.deinit();
+    const allocator = gpa.allocator();
     var vm = try VM.init(allocator);
     defer vm.deinit();
 

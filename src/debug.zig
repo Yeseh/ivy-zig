@@ -1,5 +1,6 @@
 const std = @import("std");
 const common = @import("common.zig");
+const String = @import("object/String.zig");
 
 const Chunk = common.Chunk;
 const ChunkError = common.ChunkError;
@@ -66,6 +67,32 @@ pub fn simple_instruction(name: []const u8, offset: usize) usize {
 
 pub fn constant_instruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
     var constant = chunk.get_op(offset + 1);
-    std.debug.print("{s} {d} '{d}'\n", .{ name, constant, chunk.get_constant(constant).*.number });
+    var ty = chunk.get_constant(constant).*;
+    switch (ty) {
+        .num => {
+            std.debug.print("{s} {d} '{d}'\n", .{ name, constant, ty.num });
+        },
+        // .obj => {
+        //     switch (ty.obj.type) {
+        //         .String => {
+        //             var string = String.from_obj(ty.obj);
+        //             std.debug.print("{s} {d} '{s}'\n", .{ name, constant, string.chars.items });
+        //         },
+        //     }
+        //     std.debug.print("{s} {d} '{any}'\n", .{ name, constant, ty.obj });
+        // },
+        .bool => {
+            std.debug.print("{s} {d} '{}'\n", .{ name, constant, ty.bool });
+        },
+        .nil => {
+            std.debug.print("{s} {d} 'nil'\n", .{ name, constant });
+        },
+        .object => {
+            var str = @ptrCast(*String, @alignCast(@alignOf(*String), ty.object));
+            _ = str;
+            std.debug.print("{s} {d} 'string'\n", .{ name, constant });
+        },
+    }
+
     return offset + 2;
 }

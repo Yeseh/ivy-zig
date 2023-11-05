@@ -1,30 +1,40 @@
 const std = @import("std");
+const String = @import("object/String.zig").String;
+const Object = @import("object/Object.zig").Object;
+
+const ArrayList = std.ArrayList;
 
 pub const IvyType = union(enum) {
     bool: bool,
-    number: f64,
+    num: f64,
     nil: u1,
+    object: *Object,
 
-    pub fn to_bool(self: @This()) bool {
+    pub fn to_bool(self: *@This()) bool {
         return switch (self) {
             .bool => self.bool,
             .number => true,
+            .object => true,
             .nil => false,
         };
     }
 
-    pub fn cmp(self: @This(), other: IvyType) bool {
+    pub fn cmp(self: *@This(), other: IvyType) bool {
         return switch (self) {
             .bool => switch (other) {
                 .bool => self.bool == other.bool,
                 _ => false,
             },
             .number => switch (other) {
-                .number => self.number == other.number,
+                .number => self.num == other.number,
                 _ => false,
             },
             .nil => switch (other) {
                 .nil => other == IvyType.nil,
+                _ => false,
+            },
+            .object => switch (other) {
+                .object => self.cmp(other),
                 _ => false,
             },
         };
@@ -40,7 +50,15 @@ pub fn nil() IvyType {
 }
 
 pub fn number(n: f64) IvyType {
-    return IvyType{ .number = n };
+    return IvyType{ .num = n };
 }
 
-pub const IvyTypeList = std.ArrayList(IvyType);
+pub fn is_obj(t: IvyType) bool {
+    return t == IvyType.object;
+}
+
+pub fn is_obj_type(t: IvyType, ot: Object.Type) bool {
+    return t == IvyType.object and t.obj.type == ot;
+}
+
+const IvyTypeList = std.ArrayList(IvyType);

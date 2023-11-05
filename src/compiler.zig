@@ -6,6 +6,8 @@ const types = @import("types.zig");
 const Chunk = @import("chunk.zig").Chunk;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
+const Object = @import("./object/Object.zig");
+const String = @import("./object/String.zig");
 
 const IvyType = types.IvyType;
 const Scanner = scanner.Scanner;
@@ -103,7 +105,7 @@ pub const Compiler = struct {
                 // IDENTIFIER
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // STRING
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &string, .infix = null },
                 // NUMBER
                 ParseRule{ .precedence = .NONE, .prefix = &number, .infix = null },
 
@@ -314,6 +316,17 @@ pub const Compiler = struct {
         self.emit_constant(num);
     }
 
+    fn string(self: *Self) void {
+        const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
+        std.debug.print("string: {s}\n", .{chars});
+        const str = String.from_slice(self.alloc, chars) catch {
+            self.err_at_cur("Out of memory.");
+            return;
+        };
+        const obj = IvyType{ .object = str.as_obj() };
+        self.emit_constant(obj);
+    }
+
     fn end(self: *Self) !void {
         if (common.DEBUG_PRINT_CODE) {
             if (self.had_error) {
@@ -353,6 +366,26 @@ pub const Compiler = struct {
     }
 };
 
+test "Compiler.strings" {
+    const alloc = std.testing.allocator;
+    const tst = @import("test/compiler_test.zig");
+    {
+        var source = "\"hello world\"";
+        var cnk: Chunk = try Chunk.init(alloc);
+        defer cnk.deinit();
+
+        var scan = try Scanner.init(alloc, source);
+        var comp = Compiler.init(alloc, &scan);
+        var compiled = try comp.compile(&cnk);
+
+        var expected = [_]OpCode{ .CONSTANT, .RETURN };
+
+        try std.testing.expect(compiled);
+        try debug.disassemble_chunk(&cnk, "Test");
+        try tst.assert_compiled(&expected, cnk.code);
+    }
+}
+
 test "Compiler.basic" {
     const tst = @import("test/compiler_test.zig");
 
@@ -369,7 +402,6 @@ test "Compiler.basic" {
         var expected = [_]OpCode{ .CONSTANT, .CONSTANT, .ADD, .CONSTANT, .NEGATE, .SUBTRACT, .RETURN };
 
         try std.testing.expect(compiled);
-        // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 10);
 
         try debug.disassemble_chunk(&cnk, "Test");
@@ -393,7 +425,6 @@ test "Compiler.literals" {
         var expected = [_]OpCode{ .TRUE, .RETURN };
 
         try std.testing.expect(compiled);
-        // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 2);
 
         try debug.disassemble_chunk(&cnk, "Test");
@@ -430,7 +461,6 @@ test "Compiler.grouping" {
         };
 
         try std.testing.expect(compiled);
-        // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 17);
 
         try debug.disassemble_chunk(&cnk, "Test");
@@ -467,7 +497,6 @@ test "Compiler.comparison" {
         };
 
         try std.testing.expect(compiled);
-        // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 16);
 
         try debug.disassemble_chunk(&cnk, "Test");

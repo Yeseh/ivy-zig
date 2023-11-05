@@ -9,6 +9,7 @@ pub const OpCode = enum(u8) {
     RETURN,
     NEGATE,
     ADD,
+    // TODO: Replace with ADD+NEGATE, MULTIPLY*.5
     SUBTRACT,
     DIVIDE,
     MULTIPLY,
