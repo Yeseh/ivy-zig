@@ -218,12 +218,6 @@ pub const Compiler = struct {
     }
 
     fn emit_constant(self: *Self, value: Value) void {
-        std.debug.print("emit_constant: {}\n", .{value});
-        var constant = self.make_constant(value);
-        std.debug.print("emit_constant: constant: {}\n", .{constant});
-        var opcode = @intToEnum(OpCode, constant);
-        std.debug.print("emit_constant: opcode: {}\n", .{opcode});
-
         self.emit_bytes(@enumToInt(OpCode.OP_CONSTANT), self.make_constant(value));
     }
 
@@ -365,6 +359,43 @@ test "Compiler.basic" {
         try std.testing.expect(compiled);
         // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 10);
+
+        try debug.disassemble_chunk(&cnk, "Test");
+        try tst.assert_compiled(&expected, cnk.code);
+    }
+}
+
+test "Compiler.grouping" {
+    const tst = @import("test/compiler_test.zig");
+
+    const alloc = std.testing.allocator;
+    {
+        var source = "(-1 + (2 * 4)) * 3 - -4";
+        var cnk: Chunk = try Chunk.init(alloc);
+        defer cnk.deinit();
+
+        var scan = try Scanner.init(alloc, source);
+        var comp = Compiler.init(alloc, &scan);
+        var compiled = try comp.compile(&cnk);
+
+        var expected = [_]OpCode{
+            .OP_CONSTANT,
+            .OP_NEGATE,
+            .OP_CONSTANT,
+            .OP_CONSTANT,
+            .OP_MULTIPLY,
+            .OP_ADD,
+            .OP_CONSTANT,
+            .OP_MULTIPLY,
+            .OP_CONSTANT,
+            .OP_NEGATE,
+            .OP_SUBTRACT,
+            .OP_RETURN,
+        };
+
+        try std.testing.expect(compiled);
+        // CONST CONST ADD CONST RETURN
+        try std.testing.expect(comp.chunk.code.items.len == 17);
 
         try debug.disassemble_chunk(&cnk, "Test");
         try tst.assert_compiled(&expected, cnk.code);
