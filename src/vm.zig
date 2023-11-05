@@ -38,14 +38,14 @@ pub const VirtualMachine = struct {
 
     pub fn free() !void {}
 
-    pub fn interpret(self: *Self, source: []const u8) !void {
+    pub fn interpret(self: *Self, source: [:0]const u8) !void {
         var cnk: Chunk = try Chunk.init(self.alloc);
         defer cnk.deinit();
 
         // TODO: Do this at comptime/make these global?
         std.debug.print("Compiling {s}\n", .{source});
 
-        var scanner = try Scanner.init(&self.alloc, source);
+        var scanner = try Scanner.init(self.alloc, source);
         var comp = Compiler.init(&self.alloc, &scanner);
         var compiled = try comp.compile(&cnk);
 

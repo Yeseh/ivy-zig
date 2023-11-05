@@ -20,7 +20,7 @@ pub fn main() !void {
 
     const argc = args.len;
     if (argc == 1) {
-        try repl(allocator, &vm);
+        try repl(&vm);
     } else if (argc == 2) {
         try run_file(&vm, args[1]);
     } else {
@@ -29,18 +29,21 @@ pub fn main() !void {
     }
 }
 
-fn repl(alloc: std.mem.Allocator, vm: *VM) !void {
+fn repl(vm: *VM) !void {
     while (true) {
         std.debug.print("> ", .{});
         const stdin = std.io.getStdIn().reader();
-        const buf = try stdin.readUntilDelimiterAlloc(alloc, '\n', 1024);
+        const buf = try stdin.readUntilDelimiterAlloc(vm.alloc, '\n', 1024);
+        const sent_buf: [:0]u8 = try vm.alloc.allocSentinel(u8, buf.len, 0);
 
         if (buf.len == 0) {
             std.debug.print("\n", .{});
             break;
         }
+        @memcpy(sent_buf, buf.ptr);
+        vm.alloc.free(buf);
 
-        try vm.interpret(buf);
+        try vm.interpret(sent_buf);
     }
 }
 
@@ -50,5 +53,9 @@ fn run_file(vm: *VM, path: []const u8) !void {
 
     // 4096 is the maximum up front allocated size of the buffer in readToEndAlloc
     const buf = try source.readToEndAlloc(vm.alloc, 4096);
-    try vm.interpret(buf);
+    const sent_buf: [:0]const u8 = try vm.alloc.allocSentinel(u8, buf.len, 0);
+    @memcpy(sent_buf, buf.ptr);
+    vm.alloc.free(buf);
+
+    try vm.interpret(sent_buf);
 }

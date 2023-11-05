@@ -146,7 +146,9 @@ pub const Compiler = struct {
     }
 
     fn get_rule(self: *Self, tt: TokenType) *ParseRule {
-        return &self.rules[@enumToInt(tt)];
+        var rule = &self.rules[@enumToInt(tt)];
+        std.debug.print("get_rule: {any}\n", .{rule});
+        return rule; 
     }
 
     pub fn compile(self: *Self, chunk: *Chunk) !bool {
@@ -176,6 +178,8 @@ pub const Compiler = struct {
         self.prev = self.cur;
         while (true) {
             self.cur = self.scan.scan_token();
+            std.debug.print("advance: cur {s}\n", .{self.cur.lex});
+
             if (self.cur.type != TokenType.ERROR) {
                 break;
             }
@@ -263,11 +267,14 @@ pub const Compiler = struct {
 
     fn parse_precedence(self: *Self, pres: Precedence) void {
         self.advance();
+        std.debug.print("parse_precedence: {s}\n", .{self.prev.lex});
+
         var prefix = self.get_rule(self.prev.type).prefix orelse {
             self.err("Expect expression.");
             return;
         };
 
+        std.debug.print("parse_precedence: {any}\n", .{prefix});
         prefix(self);
 
         while (@enumToInt(pres) <= @enumToInt(self.get_rule(self.cur.type).precedence)) {
@@ -280,7 +287,7 @@ pub const Compiler = struct {
     }
 
     fn number(self: *Self) void {
-        std.debug.print("number: {s}", .{self.cur.lex});
+        std.debug.print("number: {s}\n", .{self.cur.lex});
         var value = std.fmt.parseFloat(f64, self.cur.lex) catch {
             self.err_at_cur("Invalid number.");
             return;

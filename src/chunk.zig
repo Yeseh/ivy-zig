@@ -38,28 +38,16 @@ pub const Chunk = struct {
         return self.code.items.ptr;
     }
 
-    pub fn code_len(self: *Self) usize {
-        return self.code.items.len;
-    }
-
-    pub fn get_line_mut(self: *Self, idx: usize) *LineInfo {
+    pub fn get_line(self: *Self, idx: usize) *LineInfo {
         return &self.lines.items[idx];
-    }
-
-    pub fn get_line(self: *Self, idx: usize) LineInfo {
-        return self.lines.items[idx];
     }
 
     pub fn get_line_ptr(self: *Self) [*]LineInfo {
         return self.lines.items.ptr;
     }
 
-    pub fn get_constant_mut(self: *Self, idx: usize) *Value {
+    pub fn get_constant(self: *Self, idx: usize) *Value {
         return &self.constants.items[idx];
-    }
-
-    pub fn get_constant(self: *Self, idx: usize) Value {
-        return self.constants.items[idx];
     }
 
     pub fn add_constant(self: *Self, val: Value) Allocator.Error!usize {
@@ -73,7 +61,7 @@ pub const Chunk = struct {
 
         const sameLine = line_len > 0 and self.get_line(line_len - 1).line == line;
         if (sameLine) {
-            var cur_line = self.get_line_mut(line_len - 1);
+            var cur_line = self.get_line(line_len - 1);
             cur_line.inst_count += 1;
         } else {
             var info = LineInfo{ .line = line, .inst_count = 1 };
@@ -129,10 +117,10 @@ test "Chunk.basic" {
         try cnk.write(@intCast(u8, constant2), 124);
         try cnk.write(@enumToInt(OpCode.OP_RETURN), 125);
 
-        var cns1 = cnk.get_constant(0);
+        var cns1 = cnk.get_constant(0).*;
         try std.testing.expect(cns1 == 1.2);
 
-        var cns2 = cnk.get_constant(1);
+        var cns2 = cnk.get_constant(1).*;
         try std.testing.expect(cns2 == 3);
 
         var op0 = try cnk.get_line_for_op(0);
