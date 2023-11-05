@@ -1,11 +1,13 @@
 const std = @import("std");
 const scanner = @import("scanner.zig");
 const vm = @import("vm.zig");
-const Value = @import("value.zig").Value;
+const types = @import("types.zig");
+
 const Chunk = @import("chunk.zig").Chunk;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
 
+const IvyType = types.IvyType;
 const Scanner = scanner.Scanner;
 const TokenType = scanner.TokenType;
 const Token = scanner.Token;
@@ -82,21 +84,21 @@ pub const Compiler = struct {
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
 
                 // BANG
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &unary, .infix = null },
                 // BANG_EQUAL
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .EQUALITY, .prefix = null, .infix = &binary },
                 // EQUAL
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // EQUAL_EQUAL
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .EQUALITY, .prefix = null, .infix = &binary },
                 // LESS
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .COMPARISON, .prefix = null, .infix = &binary },
                 // LESS_EQUAL
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .COMPARISON, .prefix = null, .infix = &binary },
                 // GREATER
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .COMPARISON, .prefix = null, .infix = &binary },
                 // GREATER_EQUAL
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .COMPARISON, .prefix = null, .infix = &binary },
 
                 // IDENTIFIER
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
@@ -112,7 +114,7 @@ pub const Compiler = struct {
                 // ELSE
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // FALSE
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &literal, .infix = null },
                 // FOR
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // FUN
@@ -120,7 +122,7 @@ pub const Compiler = struct {
                 // IF
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // NIL
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &literal, .infix = null },
                 // OR
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // PRINT
@@ -132,7 +134,7 @@ pub const Compiler = struct {
                 // THIS
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // TRUE
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &literal, .infix = null },
                 // VAR
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // WHILE
@@ -147,7 +149,6 @@ pub const Compiler = struct {
 
     fn get_rule(self: *Self, tt: TokenType) *ParseRule {
         var rule = &self.rules[@enumToInt(tt)];
-        std.debug.print("get_rule: {any}\n", .{rule});
         return rule;
     }
 
@@ -170,7 +171,6 @@ pub const Compiler = struct {
 
     fn eat(self: *Self, tt: TokenType, msg: []const u8) void {
         if (self.cur.type == tt) {
-            std.debug.print("eat: {s}\n", .{self.cur.lex});
             self.advance();
             return;
         }
@@ -182,8 +182,6 @@ pub const Compiler = struct {
         self.prev = self.cur;
         while (true) {
             self.cur = self.scan.scan_token();
-            std.debug.print("advance: cur {s}\n", .{self.cur.lex});
-
             if (self.cur.type != TokenType.ERROR) {
                 break;
             }
@@ -196,15 +194,21 @@ pub const Compiler = struct {
         self.emit_byte(@enumToInt(op));
     }
 
+    fn emit_ops(self: *Self, opa: OpCode, opb: OpCode) void {
+        self.emit_byte(@enumToInt(opa));
+        if (self.had_error) {
+            return;
+        }
+        self.emit_byte(@enumToInt(opb));
+    }
+
     fn emit_byte(self: *Self, byte: u8) void {
-        std.debug.print("emit_byte: {any}\n", .{byte});
         self.chunk.write(byte, self.prev.line) catch {
             self.err("Out of memory.");
         };
     }
 
     fn emit_bytes(self: *Self, byte1: u8, byte2: u8) void {
-        std.debug.print("emit_bytes\n", .{});
         self.emit_byte(byte1);
         if (self.had_error) {
             return;
@@ -213,16 +217,14 @@ pub const Compiler = struct {
     }
 
     fn emit_return(self: *Self) void {
-        std.debug.print("emit_return\n", .{});
-        self.emit_op(.OP_RETURN);
+        self.emit_op(.RETURN);
     }
 
-    fn emit_constant(self: *Self, value: Value) void {
-        self.emit_bytes(@enumToInt(OpCode.OP_CONSTANT), self.make_constant(value));
+    fn emit_constant(self: *Self, value: IvyType) void {
+        self.emit_bytes(@enumToInt(OpCode.CONSTANT), self.make_constant(value));
     }
 
-    fn make_constant(self: *Self, value: Value) u8 {
-        std.debug.print("make_constant: {any}\n", .{value});
+    fn make_constant(self: *Self, value: IvyType) u8 {
         var constant = self.chunk.add_constant(value) catch {
             self.err("Out of memory.");
             return 0;
@@ -240,19 +242,34 @@ pub const Compiler = struct {
         self.eat(.RPAREN, "Expect ')' after expression.");
     }
 
+    fn literal(self: *Self) void {
+        std.debug.print("literal: {s}\n", .{self.prev.lex});
+        switch (self.prev.type) {
+            .FALSE => self.emit_op(.FALSE),
+            .NIL => self.emit_op(.NIL),
+            .TRUE => self.emit_op(.TRUE),
+            else => unreachable,
+        }
+    }
+
     fn binary(self: *Self) void {
-        std.debug.print("binary: {}\n", .{self.prev});
         var op_type = self.prev.type;
         var rule = self.get_rule(op_type);
-        std.debug.print("binary: rule: {any}\n", .{rule});
         var pres = @enumToInt(rule.precedence) + 1;
         self.parse_precedence(@intToEnum(Precedence, pres));
 
         switch (op_type) {
-            TokenType.PLUS => self.emit_op(.OP_ADD),
-            TokenType.MINUS => self.emit_op(.OP_SUBTRACT),
-            TokenType.STAR => self.emit_op(.OP_MULTIPLY),
-            TokenType.FSLASH => self.emit_op(.OP_DIVIDE),
+            .PLUS => self.emit_op(.ADD),
+            .MINUS => self.emit_op(.SUBTRACT),
+            .STAR => self.emit_op(.MULTIPLY),
+            .FSLASH => self.emit_op(.DIVIDE),
+            .EQUAL_EQUAL => self.emit_op(.EQUAL),
+            .BANG_EQUAL => self.emit_ops(.EQUAL, .NOT),
+            .GREATER => self.emit_op(.GREATER),
+            .LESS => self.emit_op(.LESS),
+            .LESS_EQUAL => self.emit_ops(.GREATER, .NOT),
+            .GREATER_EQUAL => self.emit_ops(.LESS, .NOT),
+
             else => unreachable,
         }
     }
@@ -262,44 +279,39 @@ pub const Compiler = struct {
         self.parse_precedence(.UNARY);
 
         switch (op_type) {
-            TokenType.MINUS => self.emit_op(.OP_NEGATE),
+            TokenType.MINUS => self.emit_op(.NEGATE),
+            TokenType.BANG => self.emit_op(.NOT),
             else => unreachable,
         }
     }
 
     fn parse_precedence(self: *Self, pres: Precedence) void {
-        std.debug.print("parse_precedence: {any}\n", .{pres});
         self.advance();
-        std.debug.print("parse_precedence: {s}\n", .{self.prev.lex});
 
         var prefix = self.get_rule(self.prev.type).prefix orelse {
             self.err("Expect expression.");
             return;
         };
 
-        std.debug.print("prefix rule: {any}\n", .{prefix});
         prefix(self);
 
         while (@enumToInt(pres) <= @enumToInt(self.get_rule(self.cur.type).precedence)) {
-            std.debug.print("precedence: {} {}\n", .{ @enumToInt(pres), @enumToInt(self.get_rule(self.cur.type).precedence) });
             self.advance();
-            std.debug.print("Infix for: {s}\n", .{self.prev.lex});
             var infix = self.get_rule(self.prev.type).infix orelse {
                 unreachable;
             };
-            std.debug.print("infix rule: {any}\n", .{infix});
             infix(self);
         }
     }
 
     fn number(self: *Self) void {
-        std.debug.print("number: {s}\n", .{self.prev.lex});
         var value = std.fmt.parseFloat(f64, self.prev.lex) catch {
             self.err_at_cur("Invalid number.");
             return;
         };
 
-        self.emit_constant(value);
+        var num = types.number(value);
+        self.emit_constant(num);
     }
 
     fn end(self: *Self) !void {
@@ -354,11 +366,35 @@ test "Compiler.basic" {
         var comp = Compiler.init(alloc, &scan);
         var compiled = try comp.compile(&cnk);
 
-        var expected = [_]OpCode{ .OP_CONSTANT, .OP_CONSTANT, .OP_ADD, .OP_CONSTANT, .OP_NEGATE, .OP_SUBTRACT, .OP_RETURN };
+        var expected = [_]OpCode{ .CONSTANT, .CONSTANT, .ADD, .CONSTANT, .NEGATE, .SUBTRACT, .RETURN };
 
         try std.testing.expect(compiled);
         // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 10);
+
+        try debug.disassemble_chunk(&cnk, "Test");
+        try tst.assert_compiled(&expected, cnk.code);
+    }
+}
+
+test "Compiler.literals" {
+    const tst = @import("test/compiler_test.zig");
+
+    const alloc = std.testing.allocator;
+    {
+        var source = "true";
+        var cnk: Chunk = try Chunk.init(alloc);
+        defer cnk.deinit();
+
+        var scan = try Scanner.init(alloc, source);
+        var comp = Compiler.init(alloc, &scan);
+        var compiled = try comp.compile(&cnk);
+
+        var expected = [_]OpCode{ .TRUE, .RETURN };
+
+        try std.testing.expect(compiled);
+        // CONST CONST ADD CONST RETURN
+        try std.testing.expect(comp.chunk.code.items.len == 2);
 
         try debug.disassemble_chunk(&cnk, "Test");
         try tst.assert_compiled(&expected, cnk.code);
@@ -379,23 +415,60 @@ test "Compiler.grouping" {
         var compiled = try comp.compile(&cnk);
 
         var expected = [_]OpCode{
-            .OP_CONSTANT,
-            .OP_NEGATE,
-            .OP_CONSTANT,
-            .OP_CONSTANT,
-            .OP_MULTIPLY,
-            .OP_ADD,
-            .OP_CONSTANT,
-            .OP_MULTIPLY,
-            .OP_CONSTANT,
-            .OP_NEGATE,
-            .OP_SUBTRACT,
-            .OP_RETURN,
+            .CONSTANT,
+            .NEGATE,
+            .CONSTANT,
+            .CONSTANT,
+            .MULTIPLY,
+            .ADD,
+            .CONSTANT,
+            .MULTIPLY,
+            .CONSTANT,
+            .NEGATE,
+            .SUBTRACT,
+            .RETURN,
         };
 
         try std.testing.expect(compiled);
         // CONST CONST ADD CONST RETURN
         try std.testing.expect(comp.chunk.code.items.len == 17);
+
+        try debug.disassemble_chunk(&cnk, "Test");
+        try tst.assert_compiled(&expected, cnk.code);
+    }
+}
+
+test "Compiler.comparison" {
+    const tst = @import("test/compiler_test.zig");
+
+    const alloc = std.testing.allocator;
+    {
+        var source = "!(5-4 > 3*2 == !nil)";
+        var cnk: Chunk = try Chunk.init(alloc);
+        defer cnk.deinit();
+
+        var scan = try Scanner.init(alloc, source);
+        var comp = Compiler.init(alloc, &scan);
+        var compiled = try comp.compile(&cnk);
+
+        var expected = [_]OpCode{
+            .CONSTANT,
+            .CONSTANT,
+            .SUBTRACT,
+            .CONSTANT,
+            .CONSTANT,
+            .MULTIPLY,
+            .GREATER,
+            .NIL,
+            .NOT,
+            .EQUAL,
+            .NOT,
+            .RETURN,
+        };
+
+        try std.testing.expect(compiled);
+        // CONST CONST ADD CONST RETURN
+        try std.testing.expect(comp.chunk.code.items.len == 16);
 
         try debug.disassemble_chunk(&cnk, "Test");
         try tst.assert_compiled(&expected, cnk.code);

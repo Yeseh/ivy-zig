@@ -2,8 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const common = @import("common.zig");
+const types = @import("types.zig");
 const OpCode = common.OpCode;
-const Value = common.Value;
+const Value = common.IvyType;
 
 const print = std.debug.print;
 pub const ChunkError = error{OperationOutOfBounds};
@@ -118,21 +119,21 @@ test "Chunk.basic" {
         var cnk = try Chunk.init(alloc);
         defer cnk.deinit();
 
-        var constant = try cnk.add_constant(1.2);
-        var constant2 = try cnk.add_constant(3);
+        var constant = try cnk.add_constant(types.number(1.2));
+        var constant2 = try cnk.add_constant(types.number(3));
 
-        try cnk.write(@enumToInt(OpCode.OP_CONSTANT), 123);
+        try cnk.write(@enumToInt(OpCode.CONSTANT), 123);
         try cnk.write(@intCast(u8, constant), 123);
-        try cnk.write(@enumToInt(OpCode.OP_NEGATE), 123);
-        try cnk.write(@enumToInt(OpCode.OP_CONSTANT), 124);
+        try cnk.write(@enumToInt(OpCode.NEGATE), 123);
+        try cnk.write(@enumToInt(OpCode.CONSTANT), 124);
         try cnk.write(@intCast(u8, constant2), 124);
-        try cnk.write(@enumToInt(OpCode.OP_RETURN), 125);
+        try cnk.write(@enumToInt(OpCode.RETURN), 125);
 
         var cns1 = cnk.get_constant(0).*;
-        try std.testing.expect(cns1 == 1.2);
+        try std.testing.expect(cns1.number == 1.2);
 
         var cns2 = cnk.get_constant(1).*;
-        try std.testing.expect(cns2 == 3);
+        try std.testing.expect(cns2.number == 3);
 
         var op0 = try cnk.get_line_for_op(0);
         try std.testing.expect(op0 == 123);

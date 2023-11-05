@@ -38,13 +38,20 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
     }
 
     return switch (instruction) {
-        .OP_RETURN => simple_instruction("OP_RETURN", offset),
-        .OP_CONSTANT => constant_instruction("OP_CONSTANT", chunk, offset),
-        .OP_NEGATE => simple_instruction("OP_NEGATE", offset),
-        .OP_ADD => simple_instruction("OP_ADD", offset),
-        .OP_SUBTRACT => simple_instruction("OP_SUBTRACT", offset),
-        .OP_DIVIDE => simple_instruction("OP_DIVIDE", offset),
-        .OP_MULTIPLY => simple_instruction("OP_MULTIPLY", offset),
+        .RETURN => simple_instruction("RETURN", offset),
+        .CONSTANT => constant_instruction("CONSTANT", chunk, offset),
+        .NEGATE => simple_instruction("NEGATE", offset),
+        .ADD => simple_instruction("ADD", offset),
+        .SUBTRACT => simple_instruction("SUBTRACT", offset),
+        .DIVIDE => simple_instruction("DIVIDE", offset),
+        .MULTIPLY => simple_instruction("MULTIPLY", offset),
+        .FALSE => simple_instruction("FALSE", offset),
+        .TRUE => simple_instruction("TRUE", offset),
+        .NIL => simple_instruction("NIL", offset),
+        .NOT => simple_instruction("NOT", offset),
+        .EQUAL => simple_instruction("EQUAL", offset),
+        .LESS => simple_instruction("LESS", offset),
+        .GREATER => simple_instruction("GREATER", offset),
         //else => {
         //    std.debug.print("Unknown opcode {}\n", .{instruction});
         //    return offset + 1;
@@ -59,6 +66,6 @@ pub fn simple_instruction(name: []const u8, offset: usize) usize {
 
 pub fn constant_instruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
     var constant = chunk.get_op(offset + 1);
-    std.debug.print("{s} {d} '{d}'\n", .{ name, constant, chunk.get_constant(constant).* });
+    std.debug.print("{s} {d} '{d}'\n", .{ name, constant, chunk.get_constant(constant).*.number });
     return offset + 2;
 }

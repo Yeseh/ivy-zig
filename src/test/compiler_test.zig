@@ -7,7 +7,7 @@ pub fn assert_compiled(expected: []OpCode, code: std.ArrayListUnmanaged(u8)) !vo
 
     while (expPtr < expected.len) {
         var got = code.items[gotPtr];
-        // If OP_CONSTANT
+        // If CONSTANT
         if (got == 0) {
             gotPtr += 1;
         }
