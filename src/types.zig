@@ -1,31 +1,48 @@
 const std = @import("std");
-const String = @import("object/String.zig").String;
-const Object = @import("object/Object.zig").Object;
+const Object = @import("object/Object.zig");
+const String = @import("object/string.zig").String;
 
+const common = @import("common.zig");
+
+const RuntimeError = common.RuntimeError;
 const ArrayList = std.ArrayList;
 
 pub const IvyType = union(enum) {
     bool: bool,
     num: f64,
     nil: u1,
-    object: *Object,
+    // TODO: Change to *SpecificObjectType? Then we can switch on IvyType neatly;
+    object: Object,
 
-    pub fn to_bool(self: *@This()) bool {
+    pub fn to_bool(self: @This()) bool {
         return switch (self) {
             .bool => self.bool,
-            .number => true,
+            .num => true,
             .object => true,
             .nil => false,
         };
     }
 
-    pub fn cmp(self: *@This(), other: IvyType) bool {
+    pub fn cast_obj(self: @This(), comptime DestType: type) !*DestType {
+        var obj = switch (self) {
+            .object => {
+                switch (self.obj.ty) {
+                    .String => String.from_obj(self.object),
+                }
+            },
+            else => return RuntimeError.InvalidCast,
+        };
+
+        return obj;
+    }
+
+    pub fn cmp(self: @This(), other: IvyType) bool {
         return switch (self) {
             .bool => switch (other) {
                 .bool => self.bool == other.bool,
                 _ => false,
             },
-            .number => switch (other) {
+            .num => switch (other) {
                 .number => self.num == other.number,
                 _ => false,
             },
@@ -57,8 +74,8 @@ pub fn is_obj(t: IvyType) bool {
     return t == IvyType.object;
 }
 
-pub fn is_obj_type(t: IvyType, ot: Object.Type) bool {
-    return t == IvyType.object and t.obj.type == ot;
+pub fn is_obj_type(t: IvyType, ot: Object.ObjectType) bool {
+    return t == IvyType.object and t.object.ty == ot;
 }
 
 const IvyTypeList = std.ArrayList(IvyType);

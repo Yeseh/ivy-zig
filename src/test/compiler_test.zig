@@ -13,8 +13,8 @@ pub fn assert_compiled(expected: []OpCode, code: std.ArrayListUnmanaged(u8)) !vo
         }
 
         var exp = expected[expPtr];
-        std.debug.print("Expected: {}, Got: {}\n", .{ @enumToInt(exp), got });
-        try std.testing.expect(got == @enumToInt(exp));
+        std.debug.print("Expected: {}, Got: {}\n", .{ @intFromEnum(exp), got });
+        try std.testing.expect(got == @intFromEnum(exp));
 
         gotPtr += 1;
         expPtr += 1;

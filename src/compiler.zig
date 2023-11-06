@@ -7,7 +7,7 @@ const Chunk = @import("chunk.zig").Chunk;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
 const Object = @import("./object/Object.zig");
-const String = @import("./object/String.zig");
+const String = @import("./object/string.zig").String;
 
 const IvyType = types.IvyType;
 const Scanner = scanner.Scanner;
@@ -150,7 +150,7 @@ pub const Compiler = struct {
     }
 
     fn get_rule(self: *Self, tt: TokenType) *ParseRule {
-        var rule = &self.rules[@enumToInt(tt)];
+        var rule = &self.rules[@intFromEnum(tt)];
         return rule;
     }
 
@@ -193,15 +193,15 @@ pub const Compiler = struct {
     }
 
     fn emit_op(self: *Self, op: OpCode) void {
-        self.emit_byte(@enumToInt(op));
+        self.emit_byte(@intFromEnum(op));
     }
 
     fn emit_ops(self: *Self, opa: OpCode, opb: OpCode) void {
-        self.emit_byte(@enumToInt(opa));
+        self.emit_byte(@intFromEnum(opa));
         if (self.had_error) {
             return;
         }
-        self.emit_byte(@enumToInt(opb));
+        self.emit_byte(@intFromEnum(opb));
     }
 
     fn emit_byte(self: *Self, byte: u8) void {
@@ -223,7 +223,7 @@ pub const Compiler = struct {
     }
 
     fn emit_constant(self: *Self, value: IvyType) void {
-        self.emit_bytes(@enumToInt(OpCode.CONSTANT), self.make_constant(value));
+        self.emit_bytes(@intFromEnum(OpCode.CONSTANT), self.make_constant(value));
     }
 
     fn make_constant(self: *Self, value: IvyType) u8 {
@@ -236,7 +236,7 @@ pub const Compiler = struct {
             self.err("Too many constants in one chunk.");
             return 0;
         }
-        return @intCast(u8, constant);
+        return @as(u8, @intCast(constant));
     }
 
     fn grouping(self: *Self) void {
@@ -257,8 +257,8 @@ pub const Compiler = struct {
     fn binary(self: *Self) void {
         var op_type = self.prev.type;
         var rule = self.get_rule(op_type);
-        var pres = @enumToInt(rule.precedence) + 1;
-        self.parse_precedence(@intToEnum(Precedence, pres));
+        var pres = @intFromEnum(rule.precedence) + 1;
+        self.parse_precedence(@as(Precedence, @enumFromInt(pres)));
 
         switch (op_type) {
             .PLUS => self.emit_op(.ADD),
@@ -297,7 +297,7 @@ pub const Compiler = struct {
 
         prefix(self);
 
-        while (@enumToInt(pres) <= @enumToInt(self.get_rule(self.cur.type).precedence)) {
+        while (@intFromEnum(pres) <= @intFromEnum(self.get_rule(self.cur.type).precedence)) {
             self.advance();
             var infix = self.get_rule(self.prev.type).infix orelse {
                 unreachable;
@@ -323,7 +323,7 @@ pub const Compiler = struct {
             self.err_at_cur("Out of memory.");
             return;
         };
-        const obj = IvyType{ .object = str.as_obj() };
+        const obj = IvyType{ .object = str.object() };
         self.emit_constant(obj);
     }
 

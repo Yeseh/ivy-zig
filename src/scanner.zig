@@ -11,7 +11,7 @@ pub const Token = struct {
     line: u32,
 
     pub fn dump(self: *Self) void {
-        std.debug.print("{} '{s}'", .{ @enumToInt(self.type), self.lex });
+        std.debug.print("{} '{s}'", .{ @intFromEnum(self.type), self.lex });
     }
 };
 
@@ -319,7 +319,7 @@ pub const Scanner = struct {
     }
 
     fn current_diff(self: *Self) usize {
-        return @ptrToInt(self.current.ptr) - @ptrToInt(self.start.ptr);
+        return @intFromPtr(self.current.ptr) - @intFromPtr(self.start.ptr);
     }
 
     fn check_keyword(self: *Self, start: u8, length: u8, rest: []const u8, ty: TokenType) TokenType {
@@ -360,7 +360,7 @@ pub const Scanner = struct {
     }
 
     fn make_token(self: *Self, tt: TokenType) Token {
-        var end = @ptrToInt(self.current.ptr) - @ptrToInt(self.start.ptr);
+        var end = @intFromPtr(self.current.ptr) - @intFromPtr(self.start.ptr);
         return Token{
             .type = tt,
             .lex = self.start[0..end],

@@ -3,7 +3,8 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const common = @import("common.zig");
 const types = @import("types.zig");
-const String = @import("object/String.zig");
+const String = @import("object/string.zig").String;
+const Object = @import("object/Object.zig");
 const OpCode = common.OpCode;
 const IvyType = common.IvyType;
 
@@ -108,11 +109,11 @@ pub const Chunk = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.constants.items) |ty| {
-            switch (ty) {
+        for (self.constants.items) |it| {
+            switch (it) {
                 .object => {
-                    switch (ty.object.ty) {
-                        .String => String.from_obj(ty.object).deinit(self.alloc),
+                    switch (it.object.ty) {
+                        .String => String.from_obj(it.object.ptr).deinit(self.alloc),
                     }
                 },
                 else => {},
@@ -133,12 +134,12 @@ test "Chunk.basic" {
         var constant = try cnk.add_constant(types.number(1.2));
         var constant2 = try cnk.add_constant(types.number(3));
 
-        try cnk.write(@enumToInt(OpCode.CONSTANT), 123);
-        try cnk.write(@intCast(u8, constant), 123);
-        try cnk.write(@enumToInt(OpCode.NEGATE), 123);
-        try cnk.write(@enumToInt(OpCode.CONSTANT), 124);
-        try cnk.write(@intCast(u8, constant2), 124);
-        try cnk.write(@enumToInt(OpCode.RETURN), 125);
+        try cnk.write(@intFromEnum(OpCode.CONSTANT), 123);
+        try cnk.write(@as(u8, @intCast(constant)), 123);
+        try cnk.write(@intFromEnum(OpCode.NEGATE), 123);
+        try cnk.write(@intFromEnum(OpCode.CONSTANT), 124);
+        try cnk.write(@as(u8, @intCast(constant2)), 124);
+        try cnk.write(@intFromEnum(OpCode.RETURN), 125);
 
         var cns1 = cnk.get_constant(0).*;
         try std.testing.expect(cns1.number == 1.2);
