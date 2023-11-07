@@ -10,8 +10,12 @@ pub const String = struct {
     }
 
     fn _print(ctx: *anyopaque) void {
-        const self: *String = from_obj(ctx);
-        print(self);
+        const self: *String = fromObj(ctx);
+        print(self.as);
+    }
+
+    pub fn fromObj(ctx: *anyopaque) *String {
+        return Object.cast(String, ctx);
     }
 
     pub fn print(self: *String) void {
@@ -23,7 +27,7 @@ pub const String = struct {
     pub fn init_capacity(alloc: std.mem.Allocator, capacity: usize) !*String {
         var buf = try alloc.allocSentinel(u8, capacity, 0);
         var string = try alloc.create(String);
-        string.chars = try std.ArrayList(u8).init(alloc, buf);
+        string._chars = try std.ArrayList(u8).init(alloc, buf);
         return string;
     }
 
@@ -31,7 +35,7 @@ pub const String = struct {
     pub fn init(alloc: std.mem.Allocator, buf: [:0]u8) !*String {
         var string = try alloc.create(String);
         var chrs = std.ArrayList(u8).fromOwnedSliceSentinel(alloc, 0, buf);
-        string.chars = chrs;
+        string._chars = chrs;
         return string;
     }
 
@@ -56,8 +60,8 @@ pub const String = struct {
         return String.init(alloc, buf);
     }
 
-    pub fn from_obj(ctx: *anyopaque) *String {
-        return Object.cast(String, ctx);
+    pub fn eql(self: *String, other: *String) bool {
+        return std.mem.eql(self.chars.items, other.chars.items);
     }
 };
 
@@ -69,6 +73,10 @@ test "String.basic" {
     var string_obj = string.object();
     try std.testing.expect(string.len() == 13);
     try std.testing.expect(string_obj.ty == .String);
+
+    var str_ptr: *anyopaque = @ptrCast(string);
+    try std.testing.expect(str_ptr == string_obj.ptr);
+    try std.testing.expect(str_ptr == string_obj.ptr());
 
     var str_recast = String.from_obj(string_obj.ptr);
     try std.testing.expect(str_recast.len() == 13);

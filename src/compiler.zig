@@ -6,10 +6,10 @@ const types = @import("types.zig");
 const Chunk = @import("chunk.zig").Chunk;
 const common = @import("common.zig");
 const debug = @import("debug.zig");
-const Object = @import("./object/Object.zig");
-const String = @import("./object/string.zig").String;
 
 const IvyType = types.IvyType;
+const Object = types.Object;
+const String = types.String;
 const Scanner = scanner.Scanner;
 const TokenType = scanner.TokenType;
 const Token = scanner.Token;
@@ -312,18 +312,18 @@ pub const Compiler = struct {
             return;
         };
 
-        var num = types.number(value);
+        var num = IvyType.number(value);
         self.emit_constant(num);
     }
 
     fn string(self: *Self) void {
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
         std.debug.print("string: {s}\n", .{chars});
-        const str = String.from_slice(self.alloc, chars) catch {
+        const str = String.fromSlice(self.alloc, chars) catch {
             self.err_at_cur("Out of memory.");
             return;
         };
-        const obj = IvyType{ .object = str.object() };
+        const obj = IvyType.obj(@TypeOf(str), str);
         self.emit_constant(obj);
     }
 
@@ -368,7 +368,7 @@ pub const Compiler = struct {
 
 test "Compiler.strings" {
     const alloc = std.testing.allocator;
-    const tst = @import("test/compiler_test.zig");
+    const tst = @import("test/testing.zig");
     {
         var source = "\"hello world\"";
         var cnk: Chunk = try Chunk.init(alloc);
@@ -382,12 +382,12 @@ test "Compiler.strings" {
 
         try std.testing.expect(compiled);
         try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assert_compiled(&expected, cnk.code);
+        try tst.assertCompiled(&expected, cnk.code);
     }
 }
 
 test "Compiler.basic" {
-    const tst = @import("test/compiler_test.zig");
+    const tst = @import("test/testing.zig");
 
     const alloc = std.testing.allocator;
     {
@@ -405,12 +405,12 @@ test "Compiler.basic" {
         try std.testing.expect(comp.chunk.code.items.len == 10);
 
         try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assert_compiled(&expected, cnk.code);
+        try tst.assertCompiled(&expected, cnk.code);
     }
 }
 
 test "Compiler.literals" {
-    const tst = @import("test/compiler_test.zig");
+    const tst = @import("test/testing.zig");
 
     const alloc = std.testing.allocator;
     {
@@ -428,12 +428,12 @@ test "Compiler.literals" {
         try std.testing.expect(comp.chunk.code.items.len == 2);
 
         try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assert_compiled(&expected, cnk.code);
+        try tst.assertCompiled(&expected, cnk.code);
     }
 }
 
 test "Compiler.grouping" {
-    const tst = @import("test/compiler_test.zig");
+    const tst = @import("test/testing.zig");
 
     const alloc = std.testing.allocator;
     {
@@ -464,12 +464,12 @@ test "Compiler.grouping" {
         try std.testing.expect(comp.chunk.code.items.len == 17);
 
         try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assert_compiled(&expected, cnk.code);
+        try tst.assertCompiled(&expected, cnk.code);
     }
 }
 
 test "Compiler.comparison" {
-    const tst = @import("test/compiler_test.zig");
+    const tst = @import("test/testing.zig");
 
     const alloc = std.testing.allocator;
     {
@@ -500,6 +500,6 @@ test "Compiler.comparison" {
         try std.testing.expect(comp.chunk.code.items.len == 16);
 
         try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assert_compiled(&expected, cnk.code);
+        try tst.assertCompiled(&expected, cnk.code);
     }
 }

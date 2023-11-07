@@ -12,8 +12,6 @@ const ChunkError = chunk.ChunkError;
 const IvyType = common.IvyType;
 const OpCode = common.OpCode;
 
-const DEBUG = true;
-
 pub const STACK_MAX = 256;
 pub const InterpreterError = error{
     CompiletimeError,
@@ -37,10 +35,12 @@ pub const VirtualMachine = struct {
 
     pub fn deinit(self: *Self) void {
         self.stack.deinit(self.alloc);
+        self.chunk.deinit();
     }
 
     pub fn free() !void {}
 
+    /// Interpret a source string and return the value of the RETURN operation
     pub fn interpret(self: *Self, source: [:0]u8) !IvyType {
         var cnk: Chunk = try Chunk.init(self.alloc);
         defer cnk.deinit();
@@ -71,17 +71,25 @@ pub const VirtualMachine = struct {
         return self.stack.items[self.stack.items.len - 1 - distance];
     }
 
+    pub fn dump_stack(self: *Self) void {
+        for (0..self.stack.items.len) |i| {
+            var item = self.stack.items[i];
+            std.debug.print("        > [ {s} ", .{@tagName(item)});
+            switch (item) {
+                .num => std.debug.print("{}", .{item.num}),
+                .bool => std.debug.print("{}", .{item.bool}),
+                .nil => std.debug.print("{s}", .{"nil"}),
+                .object => std.debug.print("{any}", .{item.object}),
+            }
+            std.debug.print(" ]\n", .{});
+        }
+    }
+
     pub fn run(self: *Self) !IvyType {
         while (true) {
-            if (DEBUG) {
+            if (common.DEBUG_PRINT_CODE) {
                 const offset = @intFromPtr(self.ip) - @intFromPtr(self.chunk.get_op_ptr());
-
-                std.debug.print(" \n", .{});
-                for (0..self.stack.items.len) |i| {
-                    var item = self.stack.items[i];
-                    std.debug.print("[ {any} {any} ]\n", .{ item, &item });
-                }
-
+                self.dump_stack();
                 _ = debug.disassemble_instruction(self.chunk, offset) catch |err| {
                     std.debug.print("{any}", .{err});
                     return InterpreterError.RuntimeError;
@@ -92,16 +100,14 @@ pub const VirtualMachine = struct {
             const instruction: OpCode = @enumFromInt(byte);
 
             switch (instruction) {
-                .CONSTANT => {
-                    const constant = self.read_constant();
-                    try self.stack.append(self.alloc, constant);
-                },
-                .NEGATE => {
+                .CONSTANT => try self.stack.append(self.alloc, self.read_constant()),
+                .NEGATE => b: {
                     const value = self.peek_stack(0);
                     switch (value) {
                         .num => {
                             const num = self.stack.pop().num;
-                            try self.stack.append(self.alloc, types.number(-num));
+                            try self.stack.append(self.alloc, IvyType.number(-num));
+                            break :b;
                         },
                         else => {
                             try self.rt_error("Operand must be a number.", .{});
@@ -110,44 +116,29 @@ pub const VirtualMachine = struct {
                     }
                     try self.stack.append(self.alloc, value);
                 },
-                .TRUE => {
-                    try self.stack.append(self.alloc, types.boolean(true));
+                .TRUE => try self.stack.append(self.alloc, IvyType.boolean(true)),
+                .FALSE => try self.stack.append(self.alloc, IvyType.boolean(false)),
+                .NIL => try self.stack.append(self.alloc, IvyType.nil()),
+                .NOT => b: {
+                    const value = !self.stack.pop().to_bool();
+                    try self.stack.append(self.alloc, IvyType.boolean(value));
+                    break :b;
                 },
-                .FALSE => {
-                    try self.stack.append(self.alloc, types.boolean(false));
-                },
-                .NIL => {
-                    try self.stack.append(self.alloc, types.nil());
-                },
-                .NOT => {
-                    const value = self.stack.pop().to_bool();
-                    try self.stack.append(self.alloc, types.boolean(value));
-                },
-                .ADD => {
-                    try self.binary_operation(instruction);
-                },
-                .SUBTRACT => {
-                    try self.binary_operation(instruction);
-                },
-                .DIVIDE => {
-                    try self.binary_operation(instruction);
-                },
-                .MULTIPLY => {
-                    try self.binary_operation(instruction);
-                },
-                .EQUAL => {
-                    try self.binary_operation(instruction);
-                },
-                .LESS => {
-                    try self.binary_operation(instruction);
-                },
-                .GREATER => {
-                    try self.binary_operation(instruction);
-                },
+                .ADD => try self.binary_operation(instruction),
+                .SUBTRACT => try self.binary_operation(instruction),
+                .DIVIDE => try self.binary_operation(instruction),
+                .MULTIPLY => try self.binary_operation(instruction),
+                .EQUAL => try self.binary_operation(instruction),
+                .LESS => try self.binary_operation(instruction),
+                .GREATER => try self.binary_operation(instruction),
                 .RETURN => {
-                    const value = self.stack.pop();
-                    std.debug.print("---\nRETURN: {any}\n---\n", .{value});
-                    return value;
+                    if (self.stack.items.len == 0) {
+                        return IvyType.nil();
+                    } else {
+                        const value = self.stack.pop();
+                        std.debug.print("---\nRETURN: {any}\n---\n", .{value});
+                        return value;
+                    }
                 },
             }
         }
@@ -164,6 +155,7 @@ pub const VirtualMachine = struct {
         const pb = self.peek_stack(1);
 
         if (pa != IvyType.num or pb != IvyType.num) {
+            std.debug.print("Unsupported binary operation - pa: {s}, pb: {s}\n", .{ @tagName(pa), @tagName(pb) });
             try self.rt_error("Operands must be numbers.", .{});
             return InterpreterError.RuntimeError;
         }
@@ -172,10 +164,13 @@ pub const VirtualMachine = struct {
         const a = self.stack.pop().num;
 
         switch (op) {
-            .DIVIDE => try self.stack.append(self.alloc, types.number(a / b)),
-            .ADD => try self.stack.append(self.alloc, types.number(a + b)),
-            .MULTIPLY => try self.stack.append(self.alloc, types.number(a * b)),
-            .SUBTRACT => try self.stack.append(self.alloc, types.number(a - b)),
+            .DIVIDE => try self.stack.append(self.alloc, IvyType.number(a / b)),
+            .ADD => try self.stack.append(self.alloc, IvyType.number(a + b)),
+            .MULTIPLY => try self.stack.append(self.alloc, IvyType.number(a * b)),
+            .SUBTRACT => try self.stack.append(self.alloc, IvyType.number(a - b)),
+            .GREATER => try self.stack.append(self.alloc, IvyType.boolean(a > b)),
+            .LESS => try self.stack.append(self.alloc, IvyType.boolean(a < b)),
+            .EQUAL => try self.stack.append(self.alloc, IvyType.boolean(a == b)),
             else => return InterpreterError.RuntimeError,
         }
     }
@@ -189,7 +184,6 @@ test "test interpreter" {
     var alloc = std.heap.page_allocator;
     var vm = try VirtualMachine.init(alloc);
     defer vm.deinit();
-
     const source = "1 + 2 * 3 - 4 / 5";
     try vm.interpret(source);
 }

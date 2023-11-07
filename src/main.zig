@@ -2,12 +2,16 @@ const std = @import("std");
 const common = @import("common.zig");
 const debug = @import("debug.zig");
 const chunk = @import("chunk.zig");
+const testing = @import("test/testing.zig");
+const types = @import("types.zig");
 const VM = @import("vm.zig").VirtualMachine;
 const IvyType = @import("types.zig").IvyType;
 
 const OpCode = common.OpCode;
 const List = common.List;
 const Chunk = chunk.Chunk;
+const String = types.String;
+const Object = types.Object;
 
 // TODO: Args and vm are not deinitialized properly with GPA
 pub fn main() !void {
@@ -77,36 +81,33 @@ fn run_direct(alloc: std.mem.Allocator, vm: *VM, cmd: []u8) !IvyType {
 //     // vm.alloc.free(buf);
 // }
 
-test "Ivy.addition" {
+test "Ivy.arith" {
+    std.debug.print("\n", .{});
     const allocator = std.testing.allocator;
-    var vm = try VM.init(allocator);
-    defer vm.deinit();
-
-    var source = "1 + 2";
-    var sent_buf: [:0]u8 = try allocator.allocSentinel(u8, source.len, 0);
-    @memcpy(sent_buf, source.ptr);
-    defer allocator.free(sent_buf);
-
-    var result = try vm.interpret(@constCast(sent_buf));
-    switch (result) {
-        .num => try std.testing.expect(result.num == 3.0),
-        else => try std.testing.expect(false),
-    }
+    try testing.runVm(allocator, "1 + 2", .{ .ok = IvyType.number(3) });
+    try testing.runVm(allocator, "1 - 2", .{ .ok = IvyType.number(-1) });
+    try testing.runVm(allocator, "1 - -2", .{ .ok = IvyType.number(3) });
+    try testing.runVm(allocator, "2 * (1 - -2)", .{ .ok = IvyType.number(6) });
+    try testing.runVm(allocator, "(-1 + (2 * 4)) * 3 - -4", .{ .ok = IvyType.number(25) });
 }
 
 test "Ivy.booleans" {
+    std.debug.print("\n", .{});
     const allocator = std.testing.allocator;
-    var vm = try VM.init(allocator);
-    defer vm.deinit();
 
-    var source = "!false";
-    var sent_buf: [:0]u8 = try allocator.allocSentinel(u8, source.len, 0);
-    @memcpy(sent_buf, source.ptr);
-    defer allocator.free(sent_buf);
+    try testing.runVm(allocator, "true", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(allocator, "!true", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(allocator, "5>4", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(allocator, "3>4", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(allocator, "3<4", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(allocator, "5<4", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(allocator, "5==4", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(allocator, "5==5", .{ .ok = IvyType.boolean(true) });
+}
 
-    var result = try vm.interpret(@constCast(sent_buf));
-    switch (result) {
-        .bool => try std.testing.expect(result.bool),
-        else => try std.testing.expect(false),
-    }
+test "Ivy.strings" {
+    std.debug.print("\n", .{});
+    const allocator = std.testing.allocator;
+
+    try testing.runVm(allocator, "string", .{ .ok = IvyType.string(try String.fromSlice(allocator, "string")) });
 }

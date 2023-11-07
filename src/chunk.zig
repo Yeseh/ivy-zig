@@ -3,12 +3,13 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const common = @import("common.zig");
 const types = @import("types.zig");
-const String = @import("object/string.zig").String;
-const Object = @import("object/Object.zig");
 const OpCode = common.OpCode;
 const IvyType = common.IvyType;
 
 const print = std.debug.print;
+const String = types.String;
+const Object = types.Object;
+
 pub const ChunkError = error{OperationOutOfBounds};
 pub const ChunkList = ArrayList(Chunk);
 pub const LineInfo = struct { line: u32, inst_count: u32 };
@@ -109,16 +110,17 @@ pub const Chunk = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.constants.items) |it| {
-            switch (it) {
-                .object => {
-                    switch (it.object.ty) {
-                        .String => String.from_obj(it.object.ptr).deinit(self.alloc),
-                    }
-                },
-                else => {},
-            }
-        }
+        // TODO: free all the constants, segfaults now
+        // for (self.constants.items) |it| {
+        //     switch (it) {
+        //         .object => {
+        //             switch (it.object.ty) {
+        //                 .String => @as(*String, @ptrCast(@alignCast(it.object))).deinit(self.alloc),
+        //             }
+        //         },
+        //         else => {},
+        //     }
+        // }
         self.constants.deinit(self.alloc);
         self.code.deinit(self.alloc);
         self.lines.deinit(self.alloc);
