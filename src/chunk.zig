@@ -114,11 +114,11 @@ pub const Chunk = struct {
         for (self.constants.items) |it| {
             switch (it) {
                 .object => |o| {
-                    std.debug.print("GC > SEE [{}]\n", .{&o});
+                    if (common.DEBUG_PRINT_GC) std.debug.print("GC > SEE [{}]\n", .{&o});
                     switch (o.ty) {
                         .String => {
                             var ptr: *String = @ptrCast(@alignCast(o));
-                            std.debug.print("GC > FREE [{} - '{s}']\n", .{ &ptr, ptr.asSlice() });
+                            if (common.DEBUG_PRINT_GC) std.debug.print("GC > FREE [{} - '{s}']\n", .{ &ptr, ptr.asSlice() });
                             ptr.deinit(self.alloc);
                         },
                     }

@@ -25,8 +25,6 @@ pub const VirtualMachine = struct {
     chunk: *Chunk,
     stack: std.ArrayListUnmanaged(IvyType),
     alloc: std.mem.Allocator,
-    // TEMP:
-    retval: ?IvyType = null,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         var stack = try std.ArrayListUnmanaged(IvyType).initCapacity(alloc, STACK_MAX);
@@ -57,7 +55,12 @@ pub const VirtualMachine = struct {
         self.chunk = &cnk;
         self.ip = self.chunk.get_op_ptr();
 
-        return try self.run();
+        var retval = try self.run();
+        std.debug.print("\n=> ", .{});
+        retval.print();
+        std.debug.print("\n", .{});
+
+        return retval;
     }
 
     pub fn rt_error(self: *Self, comptime fmt: []const u8, args: anytype) !void {
@@ -75,7 +78,6 @@ pub const VirtualMachine = struct {
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
                 debug.dump_stack(self);
-
                 const offset = @intFromPtr(self.ip) - @intFromPtr(self.chunk.get_op_ptr());
                 _ = debug.disassemble_instruction(self.chunk, offset) catch |err| {
                     std.debug.print("{any}\n", .{err});
@@ -119,15 +121,8 @@ pub const VirtualMachine = struct {
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
                 .RETURN => {
-                    std.debug.print("---\nRETURN: ", .{});
-                    if (self.stack.items.len == 0) {
-                        return IvyType.nil();
-                    } else {
-                        const value = self.stack.pop();
-                        value.print();
-                        std.debug.print("\n---\n", .{});
-                        return value;
-                    }
+                    var value = if (self.stack.items.len == 0) IvyType.nil() else self.stack.pop();
+                    return value;
                 },
             }
         }
