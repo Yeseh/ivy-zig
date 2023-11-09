@@ -14,6 +14,10 @@ pub const Object = extern struct {
     const Self = @This();
 
     ty: ObjectType,
+
+    pub fn as(self: *Self, comptime T: type) *T {
+        return @ptrCast(@alignCast(self));
+    }
 };
 
 /// Raw string type. This is a wrapper around a null-terminated slice of bytes.
@@ -24,8 +28,9 @@ pub const String = extern struct {
 
     /// The object header. This should not be used directly.
     _obj: Object,
-    /// Internal length of the string. This should not be used directly, use `len` instead.
+    /// Internal length of the string. This should not be used directly, use `len()` instead.
     _len: usize,
+    /// Internal capacity of the string. This should not be used directly, use `capacity()` instead.
     _capacity: usize,
     /// Heap allocated buffer of characters, should not be accessed directly.
     _chars: [*:0]u8,
@@ -111,6 +116,7 @@ pub const String = extern struct {
 
     /// Appends a slice to the string with the assumption that there is enough capacity.
     /// Does not attempt to resize the string if capacity is not met
+    ///
     /// Safety: Ensure capacity is sufficient
     pub fn appendSliceRaw(self: *Self, slice: [:0]const u8) !void {
         std.debug.assert(self._capacity >= self._len + slice.len);
@@ -204,14 +210,14 @@ pub const IvyType = union(enum) {
         return IvyType{ .object = @ptrCast(@alignCast(ptr)) };
     }
 
-    pub fn print(self: Self) void {
-        switch (self) {
+    pub fn print(self: *const Self) void {
+        switch (self.*) {
             .bool => std.debug.print("{}", .{self.bool}),
             .num => std.debug.print("{}", .{self.num}),
             .nil => std.debug.print("nil", .{}),
             .object => {
                 switch (self.object.ty) {
-                    .String => std.debug.print("'{s}'", .{@constCast(&self).as_obj_type(String).asSlice()}),
+                    .String => std.debug.print("\"{s}\"", .{self.object_as(String).asSlice()}),
                 }
             },
         }
@@ -226,31 +232,55 @@ pub const IvyType = union(enum) {
         };
     }
 
-    pub inline fn as_obj_type(self: *Self, comptime DestType: type) *DestType {
+    pub fn clone(self: *const Self, alloc: std.mem.Allocator) !Self {
+        return switch (self.*) {
+            .num => IvyType.number(self.num),
+            .bool => IvyType.boolean(self.bool),
+            .nil => IvyType.nil(),
+            .object => switch (self.object.ty) {
+                .String => IvyType.string(try String.fromSlice(alloc, self.object_as(String).asSlice())),
+            },
+        };
+    }
+
+    /// Releases the memory for a heap allocated object if this type is an object.
+    pub fn free_object(self: *Self, alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            .object => {
+                switch (self.object.ty) {
+                    .String => self.object_as(String).deinit(alloc),
+                }
+            },
+            else => {},
+        }
+    }
+
+    pub inline fn object_as(self: *const Self, comptime DestType: type) *DestType {
+        std.debug.assert(@constCast(self).is_obj());
         return @ptrCast(@alignCast(self.object));
     }
 
-    pub inline fn is_obj(self: *Self) bool {
-        return self == .object;
+    pub inline fn is_obj(self: *const Self) bool {
+        return self.* == .object;
     }
 
-    pub inline fn is_obj_type(self: *Self, ot: ObjectType) bool {
-        return self == .object and self.object.ty == ot;
+    pub inline fn is_obj_type(self: *const Self, ot: ObjectType) bool {
+        return self.* == .object and self.object.ty == ot;
     }
 
-    pub inline fn is_string(self: *Self) bool {
+    pub inline fn is_string(self: *const Self) bool {
         return self.is_obj_type(ObjectType.String);
     }
 
-    pub inline fn is_bool(self: *Self) bool {
-        return self == .bool;
+    pub inline fn is_bool(self: *const Self) bool {
+        return self.* == .bool;
     }
 
-    pub inline fn is_num(self: *Self) bool {
-        return self == .num;
+    pub inline fn is_num(self: *const Self) bool {
+        return self.* == .num;
     }
 
-    pub inline fn obj_type(self: *Self) ?ObjectType {
+    pub inline fn obj_type(self: *const Self) ?ObjectType {
         switch (self) {
             .object => return self.object.ty,
             else => null,
@@ -259,7 +289,7 @@ pub const IvyType = union(enum) {
 };
 
 pub fn eql(a: IvyType, b: IvyType) bool {
-    if (@tagName(a) != @tagName(b)) {
+    if (std.mem.eql(u8, @tagName(a), @tagName(b))) {
         return false;
     }
 
@@ -273,7 +303,7 @@ pub fn eql(a: IvyType, b: IvyType) bool {
             }
             switch (a.object.ty) {
                 .String => {
-                    return std.mem.eql(u8, a.as_obj_type(String).asSlice(), b.as_obj_type(String).asSlice());
+                    return std.mem.eql(u8, a.object_as(String).asSlice(), b.object_as(String).asSlice());
                 },
             }
         },

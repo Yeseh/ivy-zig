@@ -111,19 +111,9 @@ pub const Chunk = struct {
 
     // Primitive GC
     pub fn deinit(self: *Self) void {
-        for (self.constants.items) |it| {
-            switch (it) {
-                .object => |o| {
-                    if (common.DEBUG_PRINT_GC) std.debug.print("GC > SEE [{}]\n", .{&o});
-                    switch (o.ty) {
-                        .String => {
-                            var ptr: *String = @ptrCast(@alignCast(o));
-                            if (common.DEBUG_PRINT_GC) std.debug.print("GC > FREE [{} - '{s}']\n", .{ &ptr, ptr.asSlice() });
-                            ptr.deinit(self.alloc);
-                        },
-                    }
-                },
-                else => {},
+        for (self.constants.items) |*it| {
+            if (it.is_obj()) {
+                @constCast(it).free_object(self.alloc);
             }
         }
         self.constants.deinit();

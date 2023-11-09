@@ -25,16 +25,18 @@ pub const VirtualMachine = struct {
 
     ip: [*]u8,
     chunk: *Chunk,
-    stack: std.ArrayListUnmanaged(IvyType),
+    stack: std.ArrayList(IvyType),
     alloc: std.mem.Allocator,
+    retval: IvyType,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
-        var stack = try std.ArrayListUnmanaged(IvyType).initCapacity(alloc, STACK_MAX);
-        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack };
+        var stack = try std.ArrayList(IvyType).initCapacity(alloc, STACK_MAX);
+        return VirtualMachine{ .retval = undefined, .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack };
     }
 
     pub fn deinit(self: *Self) void {
-        self.stack.deinit(self.alloc);
+        self.stack.deinit();
+        // self.retval.free_object(self.alloc);
     }
 
     /// Interpret a source string and return the value of the RETURN operation
@@ -59,8 +61,10 @@ pub const VirtualMachine = struct {
         std.debug.print("\n=> ", .{});
         retval.print();
         std.debug.print("\n", .{});
+        std.debug.print("returned: {any}\n", .{retval});
+        self.retval = try retval.clone(self.alloc);
 
-        return retval;
+        return self.retval;
     }
 
     pub fn run(self: *Self) !IvyType {
@@ -78,13 +82,13 @@ pub const VirtualMachine = struct {
             const instruction: OpCode = @enumFromInt(byte);
 
             switch (instruction) {
-                .CONSTANT => try self.stack.append(self.alloc, self.read_constant()),
+                .CONSTANT => try self.stack.append(self.read_constant()),
                 .NEGATE => b: {
                     const value = self.peek_stack(0);
                     switch (value) {
                         .num => {
                             const num = self.stack.pop().num;
-                            try self.stack.append(self.alloc, IvyType.number(-num));
+                            try self.stack.append(IvyType.number(-num));
                             break :b;
                         },
                         else => {
@@ -92,14 +96,14 @@ pub const VirtualMachine = struct {
                             return InterpreterError.RuntimeError;
                         },
                     }
-                    try self.stack.append(self.alloc, value);
+                    try self.stack.append(value);
                 },
-                .TRUE => try self.stack.append(self.alloc, IvyType.boolean(true)),
-                .FALSE => try self.stack.append(self.alloc, IvyType.boolean(false)),
-                .NIL => try self.stack.append(self.alloc, IvyType.nil()),
+                .TRUE => try self.stack.append(IvyType.boolean(true)),
+                .FALSE => try self.stack.append(IvyType.boolean(false)),
+                .NIL => try self.stack.append(IvyType.nil()),
                 .NOT => b: {
-                    const value = !self.stack.pop().to_bool();
-                    try self.stack.append(self.alloc, IvyType.boolean(value));
+                    const value = !self.stack.pop().as_bool();
+                    try self.stack.append(IvyType.boolean(value));
                     break :b;
                 },
                 .ADD => blk: {
@@ -107,11 +111,11 @@ pub const VirtualMachine = struct {
                     var b = self.peek_stack(1);
 
                     if (a.is_string() and b.is_string()) {
-                        self.concatenate();
+                        try self.concatenate();
                     } else if (a.is_num() and b.is_num()) {
-                        b = self.stack.pop().num;
-                        a = self.stack.pop().num;
-                        try self.stack.append(self.alloc, IvyType.number(a + b));
+                        var nb = self.stack.pop().num;
+                        var na = self.stack.pop().num;
+                        try self.stack.append(IvyType.number(na + nb));
                     } else {
                         try self.rt_error("Operands must be two numbers or two strings.", .{});
                         return InterpreterError.RuntimeError;
@@ -132,15 +136,15 @@ pub const VirtualMachine = struct {
         }
     }
 
-    pub fn concatenate(self: *Self) void {
-        var a = self.stack.pop().as_obj_type(String);
-        var b = self.stack.pop().as_obj_type(String);
+    pub fn concatenate(self: *Self) !void {
+        var a = self.stack.pop().object_as(String);
+        var b = self.stack.pop().object_as(String);
 
         var str = try String.initCapacity(self.alloc, a._len + b._len);
-        str.appendSlice(self.alloc, a.asSlice());
-        str.appendSlice(self.alloc, b.asSlice());
+        try str.appendSlice(self.alloc, a.asSlice());
+        try str.appendSlice(self.alloc, b.asSlice());
 
-        try self.stack.append(self.alloc, IvyType.string(str));
+        try self.stack.append(IvyType.string(str));
     }
 
     pub fn is_falsey(self: *Self, value: IvyType) bool {
@@ -169,17 +173,17 @@ pub const VirtualMachine = struct {
             return InterpreterError.RuntimeError;
         }
 
-        const b = self.stack.pop().num;
-        const a = self.stack.pop().num;
+        const b = self.stack.pop();
+        const a = self.stack.pop();
 
         switch (op) {
-            .DIVIDE => try self.stack.append(self.alloc, IvyType.number(a / b)),
-            .ADD => try self.stack.append(self.alloc, IvyType.number(a + b)),
-            .MULTIPLY => try self.stack.append(self.alloc, IvyType.number(a * b)),
-            .SUBTRACT => try self.stack.append(self.alloc, IvyType.number(a - b)),
-            .GREATER => try self.stack.append(self.alloc, IvyType.boolean(a > b)),
-            .LESS => try self.stack.append(self.alloc, IvyType.boolean(a < b)),
-            .EQUAL => try self.stack.append(self.alloc, IvyType.eql(a, b)),
+            .DIVIDE => try self.stack.append(IvyType.number(a.num / b.num)),
+            .ADD => try self.stack.append(IvyType.number(a.num + b.num)),
+            .MULTIPLY => try self.stack.append(IvyType.number(a.num * b.num)),
+            .SUBTRACT => try self.stack.append(IvyType.number(a.num - b.num)),
+            .GREATER => try self.stack.append(IvyType.boolean(a.num > b.num)),
+            .LESS => try self.stack.append(IvyType.boolean(a.num < b.num)),
+            .EQUAL => try self.stack.append(IvyType.boolean(types.eql(a, b))),
             else => return InterpreterError.RuntimeError,
         }
     }
