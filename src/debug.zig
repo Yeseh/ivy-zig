@@ -1,6 +1,7 @@
 const std = @import("std");
 const common = @import("common.zig");
 const String = @import("object/string.zig").String;
+const VM = @import("vm.zig").VirtualMachine;
 
 const Chunk = common.Chunk;
 const ChunkError = common.ChunkError;
@@ -23,6 +24,20 @@ pub fn disassemble_lines(chunk: *Chunk) void {
 
     for (chunk.lines.items) |line| {
         std.debug.print("Line: {d} ({d})\n", .{ line.line, line.inst_count });
+    }
+}
+
+pub fn dump_stack(vm: *VM) void {
+    for (0..vm.stack.items.len) |i| {
+        var item = vm.stack.items[i];
+        std.debug.print("        > [ {s} ", .{@tagName(item)});
+        switch (item) {
+            .num => std.debug.print("{}", .{item.num}),
+            .bool => std.debug.print("{}", .{item.bool}),
+            .nil => std.debug.print("{s}", .{"nil"}),
+            .object => std.debug.print("{}", .{&item.object}),
+        }
+        std.debug.print(" ]\n", .{});
     }
 }
 
@@ -82,7 +97,7 @@ pub fn constant_instruction(name: []const u8, chunk: *Chunk, offset: usize) usiz
             switch (obj.ty) {
                 .String => |*obj_str| {
                     var str: *String = @ptrCast(@alignCast(@constCast(obj_str)));
-                    std.debug.print("{s} {d} '{s}'\n", .{ name, constant, str.chars.items });
+                    std.debug.print("{s} {d} {}\n", .{ name, constant, str.chars.items.len });
                 },
                 // else => {
                 //     std.debug.print("{s} {d} 'OBJECT'\n", .{ name, constant });

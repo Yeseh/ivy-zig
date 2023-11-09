@@ -13,33 +13,25 @@ const Chunk = chunk.Chunk;
 const String = types.String;
 const Object = types.Object;
 
-// TODO: Args and vm are not deinitialized properly with GPA
 pub fn main() !void {
-    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    // const allocator = gpa.allocator();
-    var alloc_type = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer alloc_type.deinit();
-    const allocator = alloc_type.allocator();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    const args = try std.process.argsAlloc(allocator);
+    const argc = args.len;
 
     var vm = try VM.init(allocator);
-    defer vm.deinit();
-
-    const args = try std.process.argsAlloc(allocator);
-    errdefer std.process.argsFree(allocator, args);
-
-    const argc = args.len;
     if (argc == 1) {
+        std.debug.print("Ivy REPL v0.0.1\n", .{});
         try repl(allocator, &vm);
     } else if (argc == 2) {
-        try run_direct(allocator, &vm, args[1]);
+        _ = try run_direct(allocator, &vm, args[1]);
     } else {
         std.debug.print("Usage: zivy [src]\n", .{});
     }
-    // var leaked = gpa.deinit();
-    // std.debug.print("Ivy leaked: {}\n", .{leaked});
 
     std.process.argsFree(allocator, args);
     vm.deinit();
+    _ = gpa.deinit();
 }
 
 fn repl(alloc: std.mem.Allocator, vm: *VM) !void {
@@ -56,7 +48,7 @@ fn repl(alloc: std.mem.Allocator, vm: *VM) !void {
         }
 
         @memcpy(sent_buf, buf.ptr);
-        try vm.interpret(sent_buf);
+        _ = try vm.interpret(sent_buf);
     }
 }
 
@@ -109,5 +101,7 @@ test "Ivy.strings" {
     std.debug.print("\n", .{});
     const allocator = std.testing.allocator;
 
-    try testing.runVm(allocator, "string", .{ .ok = IvyType.string(try String.fromSlice(allocator, "string")) });
+    var str = try String.fromSlice(allocator, "string");
+    defer str.deinit();
+    try testing.runVm(allocator, "string", .{ .ok = IvyType.string(str) });
 }

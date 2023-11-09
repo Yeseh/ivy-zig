@@ -35,7 +35,6 @@ pub const VirtualMachine = struct {
 
     pub fn deinit(self: *Self) void {
         self.stack.deinit(self.alloc);
-        self.chunk.deinit();
     }
 
     pub fn free() !void {}
@@ -43,6 +42,7 @@ pub const VirtualMachine = struct {
     /// Interpret a source string and return the value of the RETURN operation
     pub fn interpret(self: *Self, source: [:0]u8) !IvyType {
         var cnk: Chunk = try Chunk.init(self.alloc);
+        // TODO: Or maybe write the chunk somewhere for a next pass?
         defer cnk.deinit();
 
         // TODO: Do this at comptime/make these global?
@@ -71,27 +71,14 @@ pub const VirtualMachine = struct {
         return self.stack.items[self.stack.items.len - 1 - distance];
     }
 
-    pub fn dump_stack(self: *Self) void {
-        for (0..self.stack.items.len) |i| {
-            var item = self.stack.items[i];
-            std.debug.print("        > [ {s} ", .{@tagName(item)});
-            switch (item) {
-                .num => std.debug.print("{}", .{item.num}),
-                .bool => std.debug.print("{}", .{item.bool}),
-                .nil => std.debug.print("{s}", .{"nil"}),
-                .object => std.debug.print("{any}", .{item.object}),
-            }
-            std.debug.print(" ]\n", .{});
-        }
-    }
-
     pub fn run(self: *Self) !IvyType {
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
+                debug.dump_stack(self);
+
                 const offset = @intFromPtr(self.ip) - @intFromPtr(self.chunk.get_op_ptr());
-                self.dump_stack();
                 _ = debug.disassemble_instruction(self.chunk, offset) catch |err| {
-                    std.debug.print("{any}", .{err});
+                    std.debug.print("{any}\n", .{err});
                     return InterpreterError.RuntimeError;
                 };
             }

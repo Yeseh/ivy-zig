@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/zivy.exe",
+            "args": [
+                "\"string\""
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "symbolSearchPath": "${workspaceFolder}/zig-out/bin",
+            "environment": [],
+            "preLaunchTask": "build",
+            "externalConsole": false,
+            "logging": {
+                "moduleLoad": false
+            },
+        }
+    ]
+}

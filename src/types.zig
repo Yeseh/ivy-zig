@@ -22,6 +22,7 @@ pub const String = extern struct {
     _obj: Object,
     /// Internal length of the string. This should not be used directly, use `len` instead.
     _len: usize,
+    _capacity: usize,
     /// Heap allocated buffer of characters, should not be accessed directly.
     _chars: [*:0]u8,
 
@@ -30,13 +31,14 @@ pub const String = extern struct {
     // NOTE: extern structs can't have them anyways. Puh.
     // allocator: std.mem.Allocator,
 
-    /// Initializes a string with capacity 8. Memory is zeroed.
+    /// Initializes a string with capacity 8.
     pub fn init(alloc: std.mem.Allocator) !*Self {
         var buf: [:0]u8 = try alloc.allocSentinel(u8, 8, 0);
         // @memset(buf, 0);
 
         var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
+        str.ty = ObjectType.String;
+        str._len = buf.len;
         str._len = buf.len;
         str._chars = buf.ptr;
         return str;

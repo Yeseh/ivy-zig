@@ -245,7 +245,6 @@ pub const Compiler = struct {
     }
 
     fn literal(self: *Self) void {
-        std.debug.print("literal: {s}\n", .{self.prev.lex});
         switch (self.prev.type) {
             .FALSE => self.emit_op(.FALSE),
             .NIL => self.emit_op(.NIL),
@@ -318,7 +317,6 @@ pub const Compiler = struct {
 
     fn string(self: *Self) void {
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
-        std.debug.print("string: {s}\n", .{chars});
         const str = String.fromSlice(self.alloc, chars) catch {
             self.err_at_cur("Out of memory.");
             return;
