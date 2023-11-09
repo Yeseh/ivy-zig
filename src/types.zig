@@ -41,27 +41,23 @@ pub const String = extern struct {
         // @memset(buf, 0);
 
         var str = try alloc.create(Self);
-        str.ty = ObjectType.String;
-        str._len = buf.len;
-        str._len = buf.len;
+        str._obj.ty = ObjectType.String;
+        str._len = 0;
+        str._capacity = buf.len;
         str._chars = buf.ptr;
         return str;
     }
 
-    /// Initializes an empty string
-    pub fn empty(alloc: std.mem.Allocator) !*Self {
-        var str = try alloc.create(Self);
-        var buf: [:0]u8 = try alloc.allocSentinel(u8, 0, 0);
-        str._obj.ty = ObjectType.String;
-        str._chars = buf;
-        str._len = buf.len;
-        return str;
-    }
+    /// Initializes a string with specified capacity.
+    pub fn initCapacity(alloc: std.mem.Allocator, capacity: usize) !*Self {
+        var buf: [:0]u8 = try alloc.allocSentinel(u8, capacity, 0);
 
-    /// Returns a new slice that is a view into the string
-    pub fn asSlice(self: *Self) [:0]const u8 {
-        var slice: [:0]const u8 = std.mem.sliceTo(self._chars, 0);
-        return slice;
+        var str = try alloc.create(Self);
+        str._obj.ty = ObjectType.String;
+        str._len = 0;
+        str._chars = buf.ptr;
+        str._capacity = buf.len;
+        return str;
     }
 
     /// Copies a slice to the heap and creates a string from it
@@ -72,8 +68,70 @@ pub const String = extern struct {
         var str = try alloc.create(Self);
         str._obj.ty = ObjectType.String;
         str._chars = buf.ptr;
+        str._capacity = buf.len;
         str._len = slice.len;
         return str;
+    }
+
+    /// Initializes an empty string
+    pub fn empty(alloc: std.mem.Allocator) !*Self {
+        var str = try alloc.create(Self);
+        var buf: [:0]u8 = try alloc.allocSentinel(u8, 0, 0);
+        str._obj.ty = ObjectType.String;
+        str._chars = buf;
+        str._len = buf.len;
+        str._capacity = buf.len;
+        return str;
+    }
+
+    fn growCapacityTo(self: *Self, minimum: usize) usize {
+        var new = self._capacity;
+        while (true) {
+            new +|= new / 2 + 8;
+            if (new >= minimum)
+                return new;
+        }
+    }
+
+    fn allocatedSlice(self: *Self) [:0]u8 {
+        return self._chars[0..self._capacity :0];
+    }
+
+    /// Resizes the internal buffer.
+    /// Invalidates pointers to the strings characters
+    fn resize(self: *Self, alloc: std.mem.Allocator, new: usize) !void {
+        var newCapacity = self.growCapacityTo(new + 1);
+        var newBuf: [:0]u8 = try alloc.allocSentinel(u8, newCapacity, 0);
+        @memcpy(newBuf, self._chars);
+
+        alloc.free(self.allocatedSlice());
+        self._chars = newBuf.ptr;
+        self._capacity = newCapacity;
+    }
+
+    /// Appends a slice to the string with the assumption that there is enough capacity.
+    /// Does not attempt to resize the string if capacity is not met
+    /// Safety: Ensure capacity is sufficient
+    pub fn appendSliceRaw(self: *Self, slice: [:0]const u8) !void {
+        std.debug.assert(self._capacity >= self._len + slice.len);
+        @memcpy(self._chars, slice);
+        self._len += slice.len;
+    }
+
+    /// Appends a slice to the string
+    /// Invalidates pointers to the strings characters if resizing is needed
+    pub fn appendSlice(self: *Self, alloc: std.mem.Allocator, slice: [:0]const u8) !void {
+        const needed = self._len + slice.len;
+        if (self._capacity < needed) {
+            try self.resize(alloc, needed);
+        }
+        try self.appendSliceRaw(slice);
+    }
+
+    /// Returns a new slice that is a view into the string
+    pub fn asSlice(self: *Self) [:0]const u8 {
+        var slice: [:0]const u8 = std.mem.sliceTo(self._chars, 0);
+        return slice;
     }
 
     /// Copies a terminated slice to the heap and creates a string from it
@@ -90,8 +148,10 @@ pub const String = extern struct {
 
     /// Deinitializes a string. Should be called with the same allocator that was used to create it.
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
-        var slice = std.mem.sliceTo(self._chars, 0);
+        var slice = self.allocatedSlice();
         alloc.free(slice);
+        self._len = 0;
+        self._capacity = 0;
         alloc.destroy(self);
     }
 
@@ -157,7 +217,7 @@ pub const IvyType = union(enum) {
         }
     }
 
-    pub fn to_bool(self: @This()) bool {
+    pub inline fn as_bool(self: @This()) bool {
         return switch (self) {
             .bool => self.bool,
             .num => true,
@@ -166,50 +226,78 @@ pub const IvyType = union(enum) {
         };
     }
 
-    pub fn cmp(self: @This(), other: IvyType) bool {
-        return switch (self) {
-            .bool => switch (other) {
-                .bool => self.bool == other.bool,
-                _ => false,
-            },
-            .num => switch (other) {
-                .number => self.num == other.number,
-                _ => false,
-            },
-            .nil => switch (other) {
-                .nil => other == IvyType.nil,
-                _ => false,
-            },
-            .object => switch (other) {
-                .object => self.cmp(other),
-                _ => false,
-            },
-        };
-    }
-
-    pub fn as_obj_type(self: *Self, comptime DestType: type) *DestType {
+    pub inline fn as_obj_type(self: *Self, comptime DestType: type) *DestType {
         return @ptrCast(@alignCast(self.object));
     }
 
-    pub fn is_obj(self: *Self) bool {
+    pub inline fn is_obj(self: *Self) bool {
         return self == .object;
     }
 
-    pub fn is_obj_type(self: *Self, ot: ObjectType) bool {
+    pub inline fn is_obj_type(self: *Self, ot: ObjectType) bool {
         return self == .object and self.object.ty == ot;
     }
 
-    pub fn is_string(self: *Self) bool {
+    pub inline fn is_string(self: *Self) bool {
         return self.is_obj_type(ObjectType.String);
     }
 
-    pub fn obj_type(self: *Self) ?ObjectType {
+    pub inline fn is_bool(self: *Self) bool {
+        return self == .bool;
+    }
+
+    pub inline fn is_num(self: *Self) bool {
+        return self == .num;
+    }
+
+    pub inline fn obj_type(self: *Self) ?ObjectType {
         switch (self) {
             .object => return self.object.ty,
             else => null,
         }
     }
 };
+
+pub fn eql(a: IvyType, b: IvyType) bool {
+    if (@tagName(a) != @tagName(b)) {
+        return false;
+    }
+
+    return switch (a) {
+        .bool => a.bool == b.bool,
+        .num => a.num == b.num,
+        .nil => b == .nil,
+        .object => {
+            if (a.object.ty != b.object.ty) {
+                return false;
+            }
+            switch (a.object.ty) {
+                .String => {
+                    return std.mem.eql(u8, a.as_obj_type(String).asSlice(), b.as_obj_type(String).asSlice());
+                },
+            }
+        },
+    };
+}
+
+test "String.resizing" {
+    const a = std.testing.allocator;
+    var string = try String.init(a);
+    defer string.deinit(a);
+
+    try std.testing.expectEqual(string._capacity, 8);
+    try std.testing.expectEqual(string.len(), 0);
+    try string.appendSlice(a, "Hello, World!");
+    try std.testing.expectEqual(string.len(), 13);
+    try string.appendSlice(a, "Hello, World!");
+    try std.testing.expectEqual(string.len(), 26);
+
+    var nstring = try String.fromSlice(a, "FUBAR");
+    defer nstring.deinit(a);
+
+    try string.appendSlice(a, nstring.asSlice());
+    try std.testing.expectEqual(string.len(), 31);
+}
 
 test "String" {
     const allocator = std.testing.allocator;
