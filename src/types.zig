@@ -10,7 +10,11 @@ pub const ObjectType = enum(u8) {
 /// This is a generic object type. It is used to represent all objects in Ivy.
 /// It is based on struct inheritance in accordance with the book.
 /// There might be a more zig-native way to do this, but we'll look at that when we are done.
-pub const Object = extern struct { ty: ObjectType };
+pub const Object = extern struct {
+    const Self = @This();
+
+    ty: ObjectType,
+};
 
 /// Raw string type. This is a wrapper around a null-terminated slice of bytes.
 /// This is very C-like, in accordance with the book.
@@ -113,9 +117,9 @@ pub const String = extern struct {
 pub const IvyType = union(enum) {
     pub const Self = @This();
 
+    nil,
     bool: bool,
     num: f64,
-    nil: u1,
     // TODO: Change to *SpecificObjectType? Then we can switch on IvyType neatly;
     object: *Object,
 
@@ -124,7 +128,7 @@ pub const IvyType = union(enum) {
     }
 
     pub fn nil() Self {
-        return Self{ .nil = 0 };
+        return Self{ .nil = undefined };
     }
 
     pub fn number(n: f64) Self {
@@ -138,6 +142,19 @@ pub const IvyType = union(enum) {
     // TODO: Is there a zig comptime magic way to infer T from the pointer type?
     pub fn obj(comptime T: type, ptr: T) IvyType {
         return IvyType{ .object = @ptrCast(@alignCast(ptr)) };
+    }
+
+    pub fn print(self: Self) void {
+        switch (self) {
+            .bool => std.debug.print("{}", .{self.bool}),
+            .num => std.debug.print("{}", .{self.num}),
+            .nil => std.debug.print("nil", .{}),
+            .object => {
+                switch (self.object.ty) {
+                    .String => std.debug.print("'{s}'", .{@constCast(&self).as_obj_type(String).asSlice()}),
+                }
+            },
+        }
     }
 
     pub fn to_bool(self: @This()) bool {
@@ -170,8 +187,8 @@ pub const IvyType = union(enum) {
         };
     }
 
-    pub fn as_obj_type(comptime DestType: type, ptr: *Object) *DestType {
-        return @ptrCast(@alignCast(ptr));
+    pub fn as_obj_type(self: *Self, comptime DestType: type) *DestType {
+        return @ptrCast(@alignCast(self.object));
     }
 
     pub fn is_obj(self: *Self) bool {

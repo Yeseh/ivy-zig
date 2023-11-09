@@ -119,11 +119,13 @@ pub const VirtualMachine = struct {
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
                 .RETURN => {
+                    std.debug.print("---\nRETURN: ", .{});
                     if (self.stack.items.len == 0) {
                         return IvyType.nil();
                     } else {
                         const value = self.stack.pop();
-                        std.debug.print("---\nRETURN: {any}\n---\n", .{value});
+                        value.print();
+                        std.debug.print("\n---\n", .{});
                         return value;
                     }
                 },
