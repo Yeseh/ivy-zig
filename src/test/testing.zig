@@ -35,10 +35,11 @@ pub const VmTest = union(enum) {
 pub fn runVm(allocator: std.mem.Allocator, source: [:0]const u8, expected: VmTest) !void {
     var vm = try VM.init(allocator);
     defer vm.deinit();
-    errdefer vm.deinit();
 
     var val = try vm.interpret(@constCast(source)); //catch |err| {
-    // std.debug.print("returning {s} {any}\n", .{ @tagName(val), val });
+    defer val.free_object(allocator);
+
+    std.debug.print("got {s} {any}\n", .{ @tagName(val), val });
 
     switch (expected) {
         .ok => try assertReturn(expected.ok, val),

@@ -78,6 +78,25 @@ fn free_child(alloc: std.mem.Allocator, child: *Child) void {
     alloc.destroy(child);
 }
 
+const en = enum { One, Two, Three, None };
+
+fn bla2(e: en, str: []const u8) void {
+    std.debug.print("\n\n", .{});
+    switch (e) {
+        .One => std.debug.print("One {s} ", .{str}),
+        .Two => std.debug.print("Two {s} ", .{str}),
+        .Three => std.debug.print("Three {s} ", .{str}),
+        else => std.debug.print("Default {s}", .{str}),
+    }
+}
+
+test "switch" {
+    bla2(en.One, "First");
+    bla2(en.Two, "Second");
+    bla2(en.Three, "Third");
+    bla2(en.None, "Fourth");
+}
+
 test "allocation" {
     const allocator = std.testing.allocator;
     var obj = try allocator.create(Object);

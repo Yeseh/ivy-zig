@@ -27,14 +27,14 @@ pub const VirtualMachine = struct {
     chunk: *Chunk,
     stack: std.ArrayList(IvyType),
     alloc: std.mem.Allocator,
-    retval: IvyType,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         var stack = try std.ArrayList(IvyType).initCapacity(alloc, STACK_MAX);
-        return VirtualMachine{ .retval = undefined, .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack };
+        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack };
     }
 
     pub fn deinit(self: *Self) void {
+        std.debug.print("Deinit VM\n", .{});
         self.stack.deinit();
         // self.retval.free_object(self.alloc);
     }
@@ -42,6 +42,7 @@ pub const VirtualMachine = struct {
     /// Interpret a source string and return the value of the RETURN operation
     pub fn interpret(self: *Self, source: [:0]u8) !IvyType {
         var cnk: Chunk = try Chunk.init(self.alloc);
+        var retval = IvyType.nil();
         // TODO: Or maybe write the chunk somewhere for a next pass?
         defer cnk.deinit();
 
@@ -57,14 +58,13 @@ pub const VirtualMachine = struct {
         self.chunk = &cnk;
         self.ip = self.chunk.get_op_ptr();
 
-        var retval = try self.run();
+        retval = try self.run();
         std.debug.print("\n=> ", .{});
         retval.print();
         std.debug.print("\n", .{});
         std.debug.print("returned: {any}\n", .{retval});
-        self.retval = try retval.clone(self.alloc);
 
-        return self.retval;
+        return retval;
     }
 
     pub fn run(self: *Self) !IvyType {
@@ -107,12 +107,15 @@ pub const VirtualMachine = struct {
                     break :b;
                 },
                 .ADD => blk: {
-                    var a = self.peek_stack(0);
-                    var b = self.peek_stack(1);
+                    var pa = self.peek_stack(0);
+                    var pb = self.peek_stack(1);
 
-                    if (a.is_string() and b.is_string()) {
-                        try self.concatenate();
-                    } else if (a.is_num() and b.is_num()) {
+                    if (pa.is_string() and pb.is_string()) {
+                        var b = self.stack.pop().object_as(String);
+                        var a = self.stack.pop().object_as(String);
+                        var str = try self.concatenate(a, b);
+                        try self.stack.append(str);
+                    } else if (pa.is_num() and pb.is_num()) {
                         var nb = self.stack.pop().num;
                         var na = self.stack.pop().num;
                         try self.stack.append(IvyType.number(na + nb));
@@ -136,15 +139,17 @@ pub const VirtualMachine = struct {
         }
     }
 
-    pub fn concatenate(self: *Self) !void {
-        var a = self.stack.pop().object_as(String);
-        var b = self.stack.pop().object_as(String);
+    pub fn concatenate(self: *Self, a: *String, b: *String) !IvyType {
+        var capacity = a._len + b._len + 1;
+        var str = try String.initCapacity(self.alloc, capacity);
+        errdefer str.deinit(self.alloc);
 
-        var str = try String.initCapacity(self.alloc, a._len + b._len);
-        try str.appendSlice(self.alloc, a.asSlice());
-        try str.appendSlice(self.alloc, b.asSlice());
+        // TODO: move to fn under String
+        @memcpy(str._buf[0..a._len], a._buf[0..a._len]);
+        @memcpy(str._buf[a._len .. a._len + b._len + 1], b._buf[0 .. b._len + 1]);
+        str._len = capacity - 1;
 
-        try self.stack.append(IvyType.string(str));
+        return IvyType.string(str);
     }
 
     pub fn is_falsey(self: *Self, value: IvyType) bool {

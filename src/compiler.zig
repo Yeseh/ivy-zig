@@ -317,6 +317,7 @@ pub const Compiler = struct {
 
     fn string(self: *Self) void {
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
+
         const str = String.fromSlice(self.alloc, chars) catch {
             self.err_at_cur("Out of memory.");
             return;

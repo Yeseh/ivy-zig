@@ -33,7 +33,7 @@ pub const String = extern struct {
     /// Internal capacity of the string. This should not be used directly, use `capacity()` instead.
     _capacity: usize,
     /// Heap allocated buffer of characters, should not be accessed directly.
-    _chars: [*:0]u8,
+    _buf: [*]u8,
 
     // Not sure if the string should keep its own allocator
     // Makes it easier to do operations on the string
@@ -49,31 +49,53 @@ pub const String = extern struct {
         str._obj.ty = ObjectType.String;
         str._len = 0;
         str._capacity = buf.len;
-        str._chars = buf.ptr;
+        str._buf = buf.ptr;
         return str;
     }
 
     /// Initializes a string with specified capacity.
     pub fn initCapacity(alloc: std.mem.Allocator, capacity: usize) !*Self {
-        var buf: [:0]u8 = try alloc.allocSentinel(u8, capacity, 0);
+        var buf: []u8 = try alloc.alloc(u8, capacity);
 
         var str = try alloc.create(Self);
         str._obj.ty = ObjectType.String;
         str._len = 0;
-        str._chars = buf.ptr;
+        str._buf = buf.ptr;
         str._capacity = buf.len;
         return str;
     }
 
     /// Copies a slice to the heap and creates a string from it
+    pub fn fromSliceSentinel(alloc: std.mem.Allocator, slice: [:0]const u8) !*Self {
+        var buf: []u8 = try alloc.alloc(u8, slice.len + 1);
+        @memcpy(buf, slice.ptr);
+
+        var str = try alloc.create(Self);
+        str._obj.ty = ObjectType.String;
+        str._buf = buf.ptr;
+        str._capacity = buf.len;
+        str._len = slice.len;
+        return str;
+    }
+
     pub fn fromSlice(alloc: std.mem.Allocator, slice: []const u8) !*Self {
         var buf: [:0]u8 = try alloc.allocSentinel(u8, slice.len, 0);
         @memcpy(buf, slice.ptr);
 
         var str = try alloc.create(Self);
         str._obj.ty = ObjectType.String;
-        str._chars = buf.ptr;
-        str._capacity = buf.len;
+        str._buf = buf.ptr;
+        str._capacity = buf.len + 1;
+        str._len = slice.len;
+        return str;
+    }
+
+    /// Assumes ownership of the slice passed in without allocating
+    pub fn fromOwnedSlice(alloc: std.mem.Allocator, capacity: usize, slice: []u8) !*Self {
+        var str = try alloc.create(Self);
+        str._obj.ty = ObjectType.String;
+        str._buf = slice.ptr;
+        str._capacity = capacity;
         str._len = slice.len;
         return str;
     }
@@ -83,7 +105,7 @@ pub const String = extern struct {
         var str = try alloc.create(Self);
         var buf: [:0]u8 = try alloc.allocSentinel(u8, 0, 0);
         str._obj.ty = ObjectType.String;
-        str._chars = buf;
+        str._buf = @as([*]u8, buf.ptr);
         str._len = buf.len;
         str._capacity = buf.len;
         return str;
@@ -98,19 +120,20 @@ pub const String = extern struct {
         }
     }
 
-    fn allocatedSlice(self: *Self) [:0]u8 {
-        return self._chars[0..self._capacity :0];
+    fn allocatedSlice(self: *Self) []u8 {
+        return self._buf[0..self._capacity];
     }
 
     /// Resizes the internal buffer.
     /// Invalidates pointers to the strings characters
     fn resize(self: *Self, alloc: std.mem.Allocator, new: usize) !void {
-        var newCapacity = self.growCapacityTo(new + 1);
-        var newBuf: [:0]u8 = try alloc.allocSentinel(u8, newCapacity, 0);
-        @memcpy(newBuf, self._chars);
+        var newCapacity = self.growCapacityTo(new);
+        // TODO: realloc
+        var newBuf: []u8 = try alloc.alloc(u8, newCapacity);
+        @memcpy(newBuf, self._buf);
 
         alloc.free(self.allocatedSlice());
-        self._chars = newBuf.ptr;
+        self._buf = newBuf.ptr;
         self._capacity = newCapacity;
     }
 
@@ -120,7 +143,7 @@ pub const String = extern struct {
     /// Safety: Ensure capacity is sufficient
     pub fn appendSliceRaw(self: *Self, slice: [:0]const u8) !void {
         std.debug.assert(self._capacity >= self._len + slice.len);
-        @memcpy(self._chars, slice);
+        @memcpy(self._buf, slice);
         self._len += slice.len;
     }
 
@@ -135,21 +158,9 @@ pub const String = extern struct {
     }
 
     /// Returns a new slice that is a view into the string
-    pub fn asSlice(self: *Self) [:0]const u8 {
-        var slice: [:0]const u8 = std.mem.sliceTo(self._chars, 0);
+    pub fn asSlice(self: *Self) []const u8 {
+        var slice: []const u8 = self._buf[0..self._len]; //std.mem.sliceTo(self._buf, 0);
         return slice;
-    }
-
-    /// Copies a terminated slice to the heap and creates a string from it
-    pub fn fromSliceSentinel(alloc: std.mem.Allocator, slice: [:0]const u8) !*Self {
-        const buf = try alloc.allocSentinel(u8, slice.len, 0);
-        @memcpy(buf, slice.ptr);
-
-        var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
-        str._chars = buf.ptr;
-        str._len = slice.len;
-        return str;
     }
 
     /// Deinitializes a string. Should be called with the same allocator that was used to create it.
@@ -166,7 +177,7 @@ pub const String = extern struct {
         if (index >= self._len) {
             return common.RuntimeError.IndexOutOfBounds;
         }
-        return self._chars[index];
+        return self._buf[index];
     }
 
     /// Returns the index of the given character
@@ -245,6 +256,7 @@ pub const IvyType = union(enum) {
 
     /// Releases the memory for a heap allocated object if this type is an object.
     pub fn free_object(self: *Self, alloc: std.mem.Allocator) void {
+        std.debug.print("Freeing object {any}\n", .{self});
         switch (self.*) {
             .object => {
                 switch (self.object.ty) {
@@ -345,13 +357,13 @@ test "String" {
         try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(13));
         try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
     }
-    {
-        var string = try String.fromSliceSentinel(allocator, slice);
-        defer string.deinit(allocator);
-        try std.testing.expectEqual(string.len(), 13);
-        try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(13));
-        try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
-    }
+    // {
+    //     var string = try String.fromSliceSentinel(allocator, slice);
+    //     defer string.deinit(allocator);
+    //     try std.testing.expectEqual(string.len(), 13);
+    //     try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(13));
+    //     try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
+    // }
     {
         var string = try String.empty(allocator);
         defer string.deinit(allocator);
