@@ -101,9 +101,9 @@ test "Ivy.strings" {
     std.debug.print("\n", .{});
     const a = std.testing.allocator;
 
-    // var str1 = try String.fromSlice(a, "string");
-    // defer str1.deinit(a);
-    // try testing.runVm(a, "\"string\"", .{ .ok = IvyType.string(str1) });
+    var str1 = try String.fromSlice(a, "string");
+    defer str1.deinit(a);
+    try testing.runVm(a, "\"string\"", .{ .ok = IvyType.string(str1) });
 
     var str2 = try String.fromSlice(a, "Hello, World!");
     defer str2.deinit(a);

@@ -34,24 +34,12 @@ pub const String = extern struct {
     _capacity: usize,
     /// Heap allocated buffer of characters, should not be accessed directly.
     _buf: [*]u8,
+    hash: u32,
 
     // Not sure if the string should keep its own allocator
     // Makes it easier to do operations on the string
     // NOTE: extern structs can't have them anyways. Puh.
     // allocator: std.mem.Allocator,
-
-    /// Initializes a string with capacity 8.
-    pub fn init(alloc: std.mem.Allocator) !*Self {
-        var buf: [:0]u8 = try alloc.allocSentinel(u8, 8, 0);
-        // @memset(buf, 0);
-
-        var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
-        str._len = 0;
-        str._capacity = buf.len;
-        str._buf = buf.ptr;
-        return str;
-    }
 
     /// Initializes a string with specified capacity.
     pub fn initCapacity(alloc: std.mem.Allocator, capacity: usize) !*Self {
@@ -62,19 +50,7 @@ pub const String = extern struct {
         str._len = 0;
         str._buf = buf.ptr;
         str._capacity = buf.len;
-        return str;
-    }
-
-    /// Copies a slice to the heap and creates a string from it
-    pub fn fromSliceSentinel(alloc: std.mem.Allocator, slice: [:0]const u8) !*Self {
-        var buf: []u8 = try alloc.alloc(u8, slice.len + 1);
-        @memcpy(buf, slice.ptr);
-
-        var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
-        str._buf = buf.ptr;
-        str._capacity = buf.len;
-        str._len = slice.len;
+        str.hash = String.hash(buf);
         return str;
     }
 
@@ -87,6 +63,7 @@ pub const String = extern struct {
         str._buf = buf.ptr;
         str._capacity = buf.len + 1;
         str._len = slice.len;
+        str.hash = String.hash(slice);
         return str;
     }
 
@@ -97,18 +74,17 @@ pub const String = extern struct {
         str._buf = slice.ptr;
         str._capacity = capacity;
         str._len = slice.len;
+        str.hash = String.hash(slice);
         return str;
     }
 
-    /// Initializes an empty string
-    pub fn empty(alloc: std.mem.Allocator) !*Self {
-        var str = try alloc.create(Self);
-        var buf: [:0]u8 = try alloc.allocSentinel(u8, 0, 0);
-        str._obj.ty = ObjectType.String;
-        str._buf = @as([*]u8, buf.ptr);
-        str._len = buf.len;
-        str._capacity = buf.len;
-        return str;
+    pub fn hash(key: []const u8) u32 {
+        var hsh: u32 = 2166136261;
+        for (key) |c| {
+            hsh ^= @as(u32, c);
+            hsh *= 16777619;
+        }
+        return hsh;
     }
 
     fn growCapacityTo(self: *Self, minimum: usize) usize {
@@ -322,34 +298,34 @@ pub fn eql(a: IvyType, b: IvyType) bool {
     };
 }
 
-test "String.resizing" {
-    const a = std.testing.allocator;
-    var string = try String.init(a);
-    defer string.deinit(a);
+// test "String.resizing" {
+//     const a = std.testing.allocator;
+//     var string = try String.init(a);
+//     defer string.deinit(a);
 
-    try std.testing.expectEqual(string._capacity, 8);
-    try std.testing.expectEqual(string.len(), 0);
-    try string.appendSlice(a, "Hello, World!");
-    try std.testing.expectEqual(string.len(), 13);
-    try string.appendSlice(a, "Hello, World!");
-    try std.testing.expectEqual(string.len(), 26);
+//     try std.testing.expectEqual(string._capacity, 8);
+//     try std.testing.expectEqual(string.len(), 0);
+//     try string.appendSlice(a, "Hello, World!");
+//     try std.testing.expectEqual(string.len(), 13);
+//     try string.appendSlice(a, "Hello, World!");
+//     try std.testing.expectEqual(string.len(), 26);
 
-    var nstring = try String.fromSlice(a, "FUBAR");
-    defer nstring.deinit(a);
+//     var nstring = try String.fromSlice(a, "FUBAR");
+//     defer nstring.deinit(a);
 
-    try string.appendSlice(a, nstring.asSlice());
-    try std.testing.expectEqual(string.len(), 31);
-}
+//     try string.appendSlice(a, nstring.asSlice());
+//     try std.testing.expectEqual(string.len(), 31);
+// }
 
 test "String" {
     const allocator = std.testing.allocator;
     var slice = "Hello, World!";
-    {
-        var string = try String.init(allocator);
-        defer string.deinit(allocator);
-        try std.testing.expectEqual(string.len(), 8);
-        try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(8));
-    }
+    // {
+    //     var string = try String.init(allocator);
+    //     defer string.deinit(allocator);
+    //     try std.testing.expectEqual(string.len(), 8);
+    //     try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(8));
+    // }
     {
         var string = try String.fromSlice(allocator, slice);
         defer string.deinit(allocator);
@@ -364,10 +340,10 @@ test "String" {
     //     try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(13));
     //     try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
     // }
-    {
-        var string = try String.empty(allocator);
-        defer string.deinit(allocator);
-        try std.testing.expectEqual(string.len(), 0);
-        try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(0));
-    }
+    // {
+    //     var string = try String.empty(allocator);
+    //     defer string.deinit(allocator);
+    //     try std.testing.expectEqual(string.len(), 0);
+    //     try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(0));
+    // }
 }
