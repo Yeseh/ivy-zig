@@ -79,12 +79,15 @@ pub const String = extern struct {
     }
 
     pub fn hash(key: []const u8) u32 {
+        @setRuntimeSafety(false);
+        const prime: u32 = 16777619;
         var hsh: u32 = 2166136261;
         for (key) |c| {
-            hsh ^= @as(u32, c);
-            hsh *= 16777619;
+            hsh ^= c;
+            std.debug.print("Hashing {c} to {}\n", .{ c, hsh ^ c });
+            hsh *= prime;
         }
-        return hsh;
+        return @as(u32, @intCast(hsh));
     }
 
     fn growCapacityTo(self: *Self, minimum: usize) usize {
