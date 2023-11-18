@@ -6,58 +6,97 @@ const String = types.String;
 
 pub const Table = @This();
 const Self = @This();
-// TODO: Revisit load factor and arraylist resizing @
-const TABLE_MAX_LOAD = 0.75;
+// How full the table can be before we grow it. As a fraction of the capacity.
+const TABLE_MAX_LOAD: f64 = 0.75;
 
 const EntryHandle = u32;
+const Entry = struct { key: ?*String = null, value: IvyType = .nil };
 
+count: u32,
+capacity: u32,
+entries: [*]Entry,
 alloc: std.mem.Allocator,
-entries: std.ArrayList(Entry),
 
-pub fn init(alloc: std.mem.Allocator) !Self {
-    return .{
-        .alloc = alloc,
-        .entries = try std.ArrayList(Entry).initCapacity(alloc, 8),
-    };
+pub fn init(alloc: std.mem.Allocator, capacity: u32) !Self {
+    var entries = try alloc.alloc(Entry, capacity);
+    for (entries) |*entry| {
+        entry.key = null;
+        entry.value = .nil;
+    }
+    return .{ .alloc = alloc, .capacity = capacity, .count = 0, .entries = entries.ptr };
 }
 
 pub fn deinit(self: *Self) void {
-    self.entries.deinit();
+    self.alloc.free(self.allocatedSlice());
+    self.capacity = 0;
+    self.count = 0;
+    self.* = undefined;
 }
 
 pub fn set(self: *Self, key: *String, value: IvyType) !bool {
-    var existing = self.get(key);
-    var bNew = existing == null;
-    if (bNew) {
-        var entry = .{
-            .key = key,
-            .value = value,
-        };
-        try self.entries.append(entry);
+    var maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
+    var addCount = @as(f64, @floatFromInt(self.count + 1));
+    if (addCount > maxCapacity) {
+        try self.adjustCapacity(self.capacity + 1);
     }
-    return bNew;
+    var entry = self.get(key);
+    var isNew = entry.key == null;
+    if (isNew) {
+        entry.key = key;
+        entry.value = value;
+        self.count += 1;
+    }
+    return isNew;
 }
 
-pub fn get(self: *Self, key: *String) ?*Entry {
-    var index = key.hash % self.entries.capacity;
-    std.debug.print("len:{} i:{}\n", .{ self.entries.items.len, index });
-    if (self.entries.capacity <= index) {
-        return null;
-    }
+// NOTE: Weird API where we return a pointer to an entry in the table even if that entry is empty.
+//      This is because we need to return a pointer to the entry so that the caller can mutate it.
+//      But do we want that? It's not safe if we reallocate the table and the pointer becomes invalid.
+// TODO: Replace with EntryHandle?
+pub fn get(self: *Self, key: *String) *Entry {
+    var index = key.hash % self.capacity;
+
     while (true) {
-        var entry = &self.entries.allocatedSlice()[index];
+        var entry = &self.entries[index];
         if (entry.key == key or entry.key == null) {
             return entry;
         }
-        index = (index + 1) % self.entries.capacity;
+        index = (index + 1) % self.capacity;
     }
 }
 
-const Entry = struct { key: ?*String, value: IvyType };
+fn allocatedSlice(self: *Self) []Entry {
+    return self.entries[0..self.capacity];
+}
+
+fn growCapacity(self: *Self, minimum: u32) u32 {
+    var newCapacity = self.capacity;
+    while (true) {
+        newCapacity +|= newCapacity / 2 + 8;
+        if (newCapacity >= minimum)
+            return newCapacity;
+    }
+}
+
+fn adjustCapacity(self: *Self, new: u32) !void {
+    var newTable = try Table.init(self.alloc, new);
+    for (self.allocatedSlice()) |*entry| {
+        if (entry.key == null) continue;
+        var dest = newTable.get(entry.key.?);
+        dest.key = entry.key;
+        dest.value = entry.value;
+        if (dest.key != null) {
+            newTable.count += 1;
+        }
+    }
+
+    self.deinit();
+    self.* = newTable;
+}
 
 test "Table" {
     const a = std.testing.allocator;
-    var table = try Table.init(a);
+    var table = try Table.init(a, 2);
     defer table.deinit();
 
     var str1 = try String.fromSlice(a, "foo");
@@ -66,16 +105,32 @@ test "Table" {
 
     var str2 = try String.fromSlice(a, "bar");
     defer str2.deinit(a);
-    var val2 = IvyType.boolean(false);
+    var val2 = IvyType.boolean(true);
 
     try std.testing.expect(try table.set(str1, val1));
-    try std.testing.expect(try table.set(str2, val2));
+    // try std.testing.expectEqual(table.capacity, 2);
 
+    try std.testing.expect(try table.set(str2, val2));
     try std.testing.expect(!(try table.set(str2, val2)));
+    try std.testing.expect(table.capacity > 2);
+    try std.testing.expectEqual(table.count, 2);
 
     var got1 = table.get(str1);
-    try std.testing.expect(got1.?.value == .num);
+    try std.testing.expect(got1.value == .num);
+    try std.testing.expect(got1.value.num == 10);
 
     var got2 = table.get(str2);
-    try std.testing.expect(got2.?.value == .bool);
+    try std.testing.expect(got2.value == .bool);
+    try std.testing.expect(got2.value.bool == true);
+
+    var str3 = try String.fromSlice(a, "baz");
+    defer str3.deinit(a);
+    var val3 = IvyType.number(20);
+
+    // Resize happens here
+    try std.testing.expect(try table.set(str3, val3));
+    var got3 = table.get(str3);
+    try std.testing.expect(got3.value == .num);
+    try std.testing.expect(got3.value.num == 20);
+    try std.testing.expectEqual(table.count, 3);
 }

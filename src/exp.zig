@@ -1,4 +1,5 @@
 // Language experiments
+const IvyType = @import("types.zig");
 
 const std = @import("std");
 

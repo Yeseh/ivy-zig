@@ -2,6 +2,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const ArrayList = std.ArrayList;
 const RuntimeErrror = common.RuntimeError;
+const Fnv1a = std.hash.Fnv1a_32;
 
 pub const ObjectType = enum(u8) {
     String,
@@ -23,6 +24,7 @@ pub const Object = extern struct {
 /// Raw string type. This is a wrapper around a null-terminated slice of bytes.
 /// This is very C-like, in accordance with the book.
 /// Can investigate the use of an ArrayList in a more ziggy implementation after we are done.
+/// Size: 25 + n*1 bytes
 pub const String = extern struct {
     const Self = @This();
 
@@ -32,9 +34,9 @@ pub const String = extern struct {
     _len: usize,
     /// Internal capacity of the string. This should not be used directly, use `capacity()` instead.
     _capacity: usize,
+    hash: u32,
     /// Heap allocated buffer of characters, should not be accessed directly.
     _buf: [*]u8,
-    hash: u32,
 
     // Not sure if the string should keep its own allocator
     // Makes it easier to do operations on the string
@@ -80,11 +82,10 @@ pub const String = extern struct {
 
     pub fn hash(key: []const u8) u32 {
         @setRuntimeSafety(false);
-        const prime: u32 = 16777619;
         var hsh: u32 = 2166136261;
+        const prime: u32 = 16777619;
         for (key) |c| {
             hsh ^= c;
-            std.debug.print("Hashing {c} to {}\n", .{ c, hsh ^ c });
             hsh *= prime;
         }
         return @as(u32, @intCast(hsh));
@@ -170,6 +171,8 @@ pub const String = extern struct {
     }
 };
 
+// 1 byte tag,
+// 8 byte data
 pub const IvyType = union(enum) {
     pub const Self = @This();
 
