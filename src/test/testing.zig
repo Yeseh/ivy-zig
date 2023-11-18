@@ -8,7 +8,7 @@ const IvyType = common.IvyType;
 const Object = types.Object;
 const String = types.String;
 
-pub fn assertCompiled(expected: []OpCode, code: std.ArrayListUnmanaged(u8)) !void {
+pub fn assertCompiled(expected: []OpCode, code: std.ArrayList(u8)) !void {
     var expPtr: usize = 0;
     var gotPtr: usize = 0;
 

@@ -2,7 +2,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const ArrayList = std.ArrayList;
 const RuntimeErrror = common.RuntimeError;
-const Fnv1a = std.hash.Fnv1a_32;
+const Table = common.Table;
 
 pub const ObjectType = enum(u8) {
     String,
@@ -43,40 +43,56 @@ pub const String = extern struct {
     // NOTE: extern structs can't have them anyways. Puh.
     // allocator: std.mem.Allocator,
 
-    /// Initializes a string with specified capacity.
-    pub fn initCapacity(alloc: std.mem.Allocator, capacity: usize) !*Self {
-        var buf: []u8 = try alloc.alloc(u8, capacity);
+    /// Creates a new string Object from a slice.
+    /// Takes ownership of the slice passed
+    pub fn createInterned(alloc: std.mem.Allocator, chars: []const u8, table: *Table) !*Self {
+        var hsh = String.hash(chars);
+        var interned = table.findString(chars, hsh);
+        if (interned != null) {
+            alloc.free(std.mem.sliceTo(chars, 0));
+            return interned.?;
+        }
+        var str = try String.create(alloc, chars);
+        str.hash = hsh;
+        _ = try table.set(str, IvyType.nil());
 
-        var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
-        str._len = 0;
-        str._buf = buf.ptr;
-        str._capacity = buf.len;
-        str.hash = String.hash(buf);
         return str;
     }
 
-    pub fn fromSlice(alloc: std.mem.Allocator, slice: []const u8) !*Self {
+    /// Creates a new string Object from a slice.
+    /// Copies the slice passed in, and takes ownership of the copy.
+    pub fn copyInterned(alloc: std.mem.Allocator, chars: []const u8, table: *Table) !*Self {
+        var hsh = String.hash(chars);
+        var interned = table.findString(chars, hsh);
+        if (interned != null) {
+            return interned.?;
+        }
+        var str = try String.copy(alloc, chars);
+        str.hash = hsh;
+        _ = try table.set(str, IvyType.nil());
+
+        return str;
+    }
+
+    /// Initializes a string by taking ownership of the slice passed in.
+    pub fn create(alloc: std.mem.Allocator, chars: []const u8) !*Self {
+        var str = try alloc.create(Self);
+        str._obj.ty = ObjectType.String;
+        str._len = chars.len;
+        str._buf = @constCast(chars.ptr);
+        str._capacity = chars.len;
+        return str;
+    }
+
+    pub fn copy(alloc: std.mem.Allocator, slice: []const u8) !*Self {
         var buf: [:0]u8 = try alloc.allocSentinel(u8, slice.len, 0);
         @memcpy(buf, slice.ptr);
 
         var str = try alloc.create(Self);
         str._obj.ty = ObjectType.String;
         str._buf = buf.ptr;
-        str._capacity = buf.len + 1;
+        str._capacity = buf.len;
         str._len = slice.len;
-        str.hash = String.hash(slice);
-        return str;
-    }
-
-    /// Assumes ownership of the slice passed in without allocating
-    pub fn fromOwnedSlice(alloc: std.mem.Allocator, capacity: usize, slice: []u8) !*Self {
-        var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
-        str._buf = slice.ptr;
-        str._capacity = capacity;
-        str._len = slice.len;
-        str.hash = String.hash(slice);
         return str;
     }
 
@@ -123,6 +139,7 @@ pub const String = extern struct {
     /// Safety: Ensure capacity is sufficient
     pub fn appendSliceRaw(self: *Self, slice: [:0]const u8) !void {
         std.debug.assert(self._capacity >= self._len + slice.len);
+        @memcpy(self._buf[0..self._len], slice._buf[0..self._len]);
         @memcpy(self._buf, slice);
         self._len += slice.len;
     }
@@ -231,7 +248,7 @@ pub const IvyType = union(enum) {
             .bool => IvyType.boolean(self.bool),
             .nil => IvyType.nil(),
             .object => switch (self.object.ty) {
-                .String => IvyType.string(try String.fromSlice(alloc, self.object_as(String).asSlice())),
+                .String => IvyType.string(try String.copy(alloc, self.object_as(String).asSlice())),
             },
         };
     }
@@ -297,7 +314,7 @@ pub fn eql(a: IvyType, b: IvyType) bool {
             }
             switch (a.object.ty) {
                 .String => {
-                    return std.mem.eql(u8, a.object_as(String).asSlice(), b.object_as(String).asSlice());
+                    return a.object_as(String) == b.object_as(String);
                 },
             }
         },
@@ -323,17 +340,18 @@ pub fn eql(a: IvyType, b: IvyType) bool {
 //     try std.testing.expectEqual(string.len(), 31);
 // }
 
+// TODO: Test for string interning
 test "String" {
     const allocator = std.testing.allocator;
     var slice = "Hello, World!";
-    // {
-    //     var string = try String.init(allocator);
-    //     defer string.deinit(allocator);
-    //     try std.testing.expectEqual(string.len(), 8);
-    //     try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(8));
-    // }
     {
-        var string = try String.fromSlice(allocator, slice);
+        var string = try String.create(allocator, slice);
+        defer string.deinit(allocator);
+        try std.testing.expectEqual(string.len(), 8);
+        try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(8));
+    }
+    {
+        var string = try String.copy(allocator, slice);
         defer string.deinit(allocator);
         try std.testing.expectEqual(string.len(), 13);
         try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(13));

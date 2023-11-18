@@ -131,7 +131,7 @@ test "Chunk.basic" {
         var constant = try cnk.add_constant(IvyType.number(1.2));
         var constant2 = try cnk.add_constant(IvyType.number(3));
 
-        var string = try String.fromSlice(alloc, "Hello");
+        var string = try String.copy(alloc, "Hello");
         defer string.deinit(alloc);
         var constant3 = try cnk.add_constant(IvyType.string(string));
 

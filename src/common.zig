@@ -1,6 +1,7 @@
 pub const Chunk = @import("chunk.zig").Chunk;
 pub const ChunkError = @import("chunk.zig").ChunkError;
 pub const IvyType = @import("types.zig").IvyType;
+pub const Table = @import("table.zig");
 
 pub const DEBUG_PRINT_CODE = true;
 pub const DEBUG_PRINT_RETURN = true;

@@ -6,6 +6,7 @@ const chunk = @import("chunk.zig");
 const compiler = @import("compiler.zig");
 const Compiler = compiler.Compiler;
 const Scanner = @import("scanner.zig").Scanner;
+const Table = @import("table.zig");
 
 const Chunk = chunk.Chunk;
 const ChunkError = chunk.ChunkError;
@@ -27,14 +28,17 @@ pub const VirtualMachine = struct {
     chunk: *Chunk,
     stack: std.ArrayList(IvyType),
     alloc: std.mem.Allocator,
+    strings: Table,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         var stack = try std.ArrayList(IvyType).initCapacity(alloc, STACK_MAX);
-        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack };
+        var table = try Table.init(alloc, 8);
+        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack, .strings = table };
     }
 
     pub fn deinit(self: *Self) void {
         std.debug.print("Deinit VM\n", .{});
+        self.strings.deinit();
         self.stack.deinit();
         // self.retval.free_object(self.alloc);
     }
@@ -141,12 +145,14 @@ pub const VirtualMachine = struct {
 
     pub fn concatenate(self: *Self, a: *String, b: *String) !IvyType {
         var capacity = a._len + b._len + 1;
-        var str = try String.initCapacity(self.alloc, capacity);
-        errdefer str.deinit(self.alloc);
+        var buf = try self.alloc.alloc(u8, capacity);
+        errdefer self.alloc.free(buf);
 
-        // TODO: move to fn under String
-        @memcpy(str._buf[0..a._len], a._buf[0..a._len]);
-        @memcpy(str._buf[a._len .. a._len + b._len + 1], b._buf[0 .. b._len + 1]);
+        // TODO: move all this to fn under String for neatness
+        @memcpy(buf[0..a._len], a._buf[0..a._len]);
+        @memcpy(buf[a._len .. a._len + b._len + 1], b._buf[0 .. b._len + 1]);
+
+        var str = try String.createInterned(self.alloc, buf, &self.strings);
         str._len = capacity - 1;
 
         return IvyType.string(str);
@@ -209,5 +215,5 @@ test "test interpreter" {
     var vm = try VirtualMachine.init(alloc);
     defer vm.deinit();
     const source = "1 + 2 * 3 - 4 / 5";
-    try vm.interpret(source);
+    _ = try vm.interpret(@constCast(source));
 }

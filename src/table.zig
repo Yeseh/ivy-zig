@@ -22,24 +22,24 @@ const Entry = union(Tag) {
     const Tag = enum {
         tombstone,
         empty,
-        bucket,
+        full,
     };
     const Handle = union(Tag) {
         tombstone: TableSize,
         empty: TableSize,
-        bucket: TableSize,
+        full: TableSize,
     };
 
     tombstone,
     empty: Bucket,
-    bucket: Bucket,
+    full: Bucket,
 
     pub fn empty() Entry {
         return Entry{ .empty = .{ .key = null, .value = .nil } };
     }
 
     pub fn bucket(b: Entry.Bucket) Entry {
-        return Entry{ .bucket = b };
+        return Entry{ .full = b };
     }
 
     pub fn tombstone() Entry {
@@ -69,8 +69,8 @@ pub fn deinit(self: *Self) void {
 
 pub fn addAll(self: *Self, other: *Self) !void {
     for (other.allocatedSlice()) |*entry| {
-        if (entry.key == null) continue;
-        _ = try self.set(entry.key.?, entry.value);
+        if (entry.* != .full) continue;
+        _ = try self.set(entry.full.key.?, entry.full.value);
     }
 }
 
@@ -85,7 +85,7 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
 
     switch (handle) {
         // Key already exists
-        .bucket => {
+        .full => {
             return false;
         },
         // Recycle a tombstone
@@ -114,8 +114,8 @@ pub fn get(self: *Self, key: *String) ?IvyType {
     if (self.count == 0) return null;
 
     var handle = self.find(key);
-    if (handle == .bucket) {
-        return self.entries[handle.bucket].bucket.value;
+    if (handle == .full) {
+        return self.entries[handle.full].full.value;
     }
 
     return null;
@@ -125,12 +125,39 @@ pub fn delete(self: *Self, key: *String) bool {
     if (self.count == 0) return false;
 
     var handle = self.find(key);
-    if (handle == .bucket) {
-        self.entries[handle.bucket] = Entry.tombstone();
+    if (handle == .full) {
+        self.entries[handle.full] = Entry.tombstone();
         return true;
     }
 
     return false;
+}
+
+pub fn findString(self: *Self, chars: []const u8, hash: u32) ?*String {
+    if (self.count == 0) return null;
+    var index = hash % self.capacity;
+    while (true) {
+        var entry = &self.entries[index];
+        switch (entry.*) {
+            .full => {
+                var key = entry.full.key.?;
+                var leneql = key._len == chars.len;
+                var memeql = std.mem.eql(u8, chars, key.asSlice());
+                var hasheql = key.hash == hash;
+
+                if (leneql and hasheql and memeql)
+                    return entry.full.value.object_as(String);
+            },
+            // string is not in the table
+            .empty => {
+                return null;
+            },
+            // Skip tombstones
+            .tombstone => {},
+        }
+
+        index = (index + 1) % self.capacity;
+    }
 }
 
 fn growCapacity(self: *Self) TableSize {
@@ -147,8 +174,8 @@ fn find(self: *Self, key: *String) Entry.Handle {
         var entry = &self.entries[index];
         switch (entry.*) {
             // There is a bucket entry here
-            .bucket => {
-                if (entry.bucket.key == key) return .{ .bucket = index };
+            .full => {
+                if (entry.full.key == key) return .{ .full = index };
             },
             // We found an empty bucket
             // If we previously found a tombstone, we'll return that instead so it can be recycled
@@ -175,17 +202,17 @@ fn adjustCapacity(self: *Self, capacity: u32) !void {
 
     for (self.allocatedSlice()) |entry| {
         // Don't copy empty or tombstone entries
-        if (entry != .bucket) continue;
+        if (entry != .full) continue;
 
-        var handle = newTable.find(entry.bucket.key.?);
+        var handle = newTable.find(entry.full.key.?);
         switch (handle) {
             .tombstone => {},
-            .bucket => {
-                newTable.entries[handle.bucket] = Entry.bucket(entry.bucket);
+            .full => {
+                newTable.entries[handle.full] = Entry.bucket(entry.full);
                 newTable.count += 1;
             },
             .empty => {
-                newTable.entries[handle.empty] = Entry.bucket(entry.bucket);
+                newTable.entries[handle.empty] = Entry.bucket(entry.full);
                 newTable.count += 1;
             },
         }
@@ -200,10 +227,10 @@ test "Table.basic" {
     var table = try Table.init(a, 2);
     defer table.deinit();
 
-    var str1 = try String.fromSlice(a, "foo");
-    var str2 = try String.fromSlice(a, "bar");
-    var str3 = try String.fromSlice(a, "baz");
-    var str4 = try String.fromSlice(a, "zab");
+    var str1 = try String.copy(a, "foo");
+    var str2 = try String.copy(a, "bar");
+    var str3 = try String.copy(a, "baz");
+    var str4 = try String.copy(a, "zab");
 
     defer str1.deinit(a);
     defer str2.deinit(a);
@@ -242,7 +269,7 @@ test "Table.basic" {
     try std.testing.expect(table.delete(str1));
     try std.testing.expect(!table.delete(str4));
 
-    var str5 = try String.fromSlice(a, "foo");
+    var str5 = try String.copy(a, "foo");
     var val5 = IvyType.number(30);
     defer str5.deinit(a);
 
@@ -256,10 +283,10 @@ test "Table.addAll" {
     var tableB = try Table.init(a, 2);
     defer tableB.deinit();
 
-    var k1 = try String.fromSlice(a, "foo");
-    var k2 = try String.fromSlice(a, "bar");
-    var k3 = try String.fromSlice(a, "baz");
-    var k4 = try String.fromSlice(a, "zab");
+    var k1 = try String.copy(a, "foo");
+    var k2 = try String.copy(a, "bar");
+    var k3 = try String.copy(a, "baz");
+    var k4 = try String.copy(a, "zab");
 
     defer k1.deinit(a);
     defer k2.deinit(a);
@@ -279,13 +306,13 @@ test "Table.addAll" {
     try tableA.addAll(&tableB);
     try std.testing.expectEqual(tableA.count, 4);
 
-    var got1 = tableA.find(k1);
-    var got2 = tableA.find(k2);
-    var got3 = tableA.find(k3);
-    var got4 = tableA.find(k4);
+    var got1 = tableA.get(k1).?;
+    var got2 = tableA.get(k2).?;
+    var got3 = tableA.get(k3).?;
+    var got4 = tableA.get(k4).?;
 
-    try std.testing.expect(got1.value.num == 1);
-    try std.testing.expect(got2.value.num == 2);
-    try std.testing.expect(got3.value.num == 3);
-    try std.testing.expect(got4.value.num == 4);
+    try std.testing.expect(got1.num == 1);
+    try std.testing.expect(got2.num == 2);
+    try std.testing.expect(got3.num == 3);
+    try std.testing.expect(got4.num == 4);
 }
