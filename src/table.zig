@@ -46,7 +46,7 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
     if (addCount > maxCapacity) {
         try self.adjustCapacity(self.capacity + 1);
     }
-    var entry = self.get(key);
+    var entry = self.find(key);
     var isNew = entry.key == null;
     if (isNew) {
         entry.key = key;
@@ -56,11 +56,20 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
     return isNew;
 }
 
+pub fn get(self: *Self, key: *String) ?IvyType {
+    if (self.count == 0) return null;
+
+    var entry = self.find(key);
+    if (entry.key == null) return null;
+
+    return entry.value;
+}
+
 // NOTE: Weird API where we return a pointer to an entry in the table even if that entry is empty.
 //      This is because we need to return a pointer to the entry so that the caller can mutate it.
 //      But do we want that? It's not safe if we reallocate the table and the pointer becomes invalid.
 // TODO: Replace with EntryHandle?
-pub fn get(self: *Self, key: *String) *Entry {
+pub fn find(self: *Self, key: *String) *Entry {
     var index = key.hash % self.capacity;
 
     while (true) {
@@ -89,7 +98,7 @@ fn adjustCapacity(self: *Self, new: u32) !void {
     var newTable = try Table.init(self.alloc, new);
     for (self.allocatedSlice()) |*entry| {
         if (entry.key == null) continue;
-        var dest = newTable.get(entry.key.?);
+        var dest = newTable.find(entry.key.?);
         dest.key = entry.key;
         dest.value = entry.value;
         if (dest.key != null) {
@@ -107,12 +116,18 @@ test "Table.basic" {
     defer table.deinit();
 
     var str1 = try String.fromSlice(a, "foo");
-    defer str1.deinit(a);
-    var val1 = IvyType.number(10);
-
     var str2 = try String.fromSlice(a, "bar");
+    var str3 = try String.fromSlice(a, "baz");
+    var str4 = try String.fromSlice(a, "zab");
+
+    defer str1.deinit(a);
     defer str2.deinit(a);
+    defer str3.deinit(a);
+    defer str4.deinit(a);
+
+    var val1 = IvyType.number(10);
     var val2 = IvyType.boolean(true);
+    var val3 = IvyType.number(20);
 
     try std.testing.expect(try table.set(str1, val1));
     // try std.testing.expectEqual(table.capacity, 2);
@@ -123,23 +138,20 @@ test "Table.basic" {
     try std.testing.expectEqual(table.count, 2);
 
     var got1 = table.get(str1);
-    try std.testing.expect(got1.value == .num);
-    try std.testing.expect(got1.value.num == 10);
+    try std.testing.expect(got1.?.num == 10);
 
     var got2 = table.get(str2);
-    try std.testing.expect(got2.value == .bool);
-    try std.testing.expect(got2.value.bool == true);
-
-    var str3 = try String.fromSlice(a, "baz");
-    defer str3.deinit(a);
-    var val3 = IvyType.number(20);
+    try std.testing.expect(got2.?.bool == true);
 
     // Resize happens here
     try std.testing.expect(try table.set(str3, val3));
+
     var got3 = table.get(str3);
-    try std.testing.expect(got3.value == .num);
-    try std.testing.expect(got3.value.num == 20);
+    try std.testing.expect(got3.?.num == 20);
     try std.testing.expectEqual(table.count, 3);
+
+    var got4 = table.get(str4);
+    try std.testing.expect(got4 == null);
 }
 
 test "Table.addAll" {
@@ -172,10 +184,10 @@ test "Table.addAll" {
     try tableA.addAll(&tableB);
     try std.testing.expectEqual(tableA.count, 4);
 
-    var got1 = tableA.get(k1);
-    var got2 = tableA.get(k2);
-    var got3 = tableA.get(k3);
-    var got4 = tableA.get(k4);
+    var got1 = tableA.find(k1);
+    var got2 = tableA.find(k2);
+    var got3 = tableA.find(k3);
+    var got4 = tableA.find(k4);
 
     try std.testing.expect(got1.value.num == 1);
     try std.testing.expect(got2.value.num == 2);
