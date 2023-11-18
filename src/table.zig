@@ -33,6 +33,13 @@ pub fn deinit(self: *Self) void {
     self.* = undefined;
 }
 
+pub fn addAll(self: *Self, other: *Self) !void {
+    for (other.allocatedSlice()) |*entry| {
+        if (entry.key == null) continue;
+        _ = try self.set(entry.key.?, entry.value);
+    }
+}
+
 pub fn set(self: *Self, key: *String, value: IvyType) !bool {
     var maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
     var addCount = @as(f64, @floatFromInt(self.count + 1));
@@ -94,7 +101,7 @@ fn adjustCapacity(self: *Self, new: u32) !void {
     self.* = newTable;
 }
 
-test "Table" {
+test "Table.basic" {
     const a = std.testing.allocator;
     var table = try Table.init(a, 2);
     defer table.deinit();
@@ -133,4 +140,45 @@ test "Table" {
     try std.testing.expect(got3.value == .num);
     try std.testing.expect(got3.value.num == 20);
     try std.testing.expectEqual(table.count, 3);
+}
+
+test "Table.addAll" {
+    const a = std.testing.allocator;
+    var tableA = try Table.init(a, 2);
+    defer tableA.deinit();
+    var tableB = try Table.init(a, 2);
+    defer tableB.deinit();
+
+    var k1 = try String.fromSlice(a, "foo");
+    var k2 = try String.fromSlice(a, "bar");
+    var k3 = try String.fromSlice(a, "baz");
+    var k4 = try String.fromSlice(a, "zab");
+
+    defer k1.deinit(a);
+    defer k2.deinit(a);
+    defer k3.deinit(a);
+    defer k4.deinit(a);
+
+    var v1 = IvyType.number(1);
+    var v2 = IvyType.number(2);
+    var v3 = IvyType.number(3);
+    var v4 = IvyType.number(4);
+
+    try std.testing.expect(try tableA.set(k1, v1));
+    try std.testing.expect(try tableA.set(k2, v2));
+    try std.testing.expect(try tableB.set(k3, v3));
+    try std.testing.expect(try tableB.set(k4, v4));
+
+    try tableA.addAll(&tableB);
+    try std.testing.expectEqual(tableA.count, 4);
+
+    var got1 = tableA.get(k1);
+    var got2 = tableA.get(k2);
+    var got3 = tableA.get(k3);
+    var got4 = tableA.get(k4);
+
+    try std.testing.expect(got1.value.num == 1);
+    try std.testing.expect(got2.value.num == 2);
+    try std.testing.expect(got3.value.num == 3);
+    try std.testing.expect(got4.value.num == 4);
 }
