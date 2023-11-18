@@ -78,7 +78,8 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
     var maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
     var addCount = @as(f64, @floatFromInt(self.count + 1));
     if (addCount > maxCapacity) {
-        try self.adjustCapacity(self.capacity + 1);
+        var newCapacity = self.growCapacity();
+        try self.adjustCapacity(newCapacity);
     }
     var handle = self.find(key);
 
@@ -132,6 +133,12 @@ pub fn delete(self: *Self, key: *String) bool {
     return false;
 }
 
+fn growCapacity(self: *Self) TableSize {
+    var newCapacity = self.capacity * 2;
+    if (newCapacity < 8) return 8;
+    return newCapacity;
+}
+
 fn find(self: *Self, key: *String) Entry.Handle {
     var index = key.hash % self.capacity;
     var tombstone: ?Entry.Handle = null;
@@ -162,8 +169,9 @@ fn allocatedSlice(self: *Self) []Entry {
     return self.entries[0..self.capacity];
 }
 
-fn adjustCapacity(self: *Self, new: u32) !void {
-    var newTable = try Table.init(self.alloc, new);
+fn adjustCapacity(self: *Self, capacity: u32) !void {
+    var newTable = try Table.init(self.alloc, capacity);
+    std.debug.print("adjustCapacity: {}\n", .{capacity});
 
     for (self.allocatedSlice()) |entry| {
         // Don't copy empty or tombstone entries
@@ -212,8 +220,8 @@ test "Table.basic" {
 
     try std.testing.expect(try table.set(str2, val2));
     try std.testing.expect(!(try table.set(str2, val2)));
-    std.debug.print("table.capacity: {}\n", .{table.capacity});
     try std.testing.expectEqual(table.count, 2);
+    try std.testing.expectEqual(table.capacity, 8);
 
     var got1 = table.get(str1);
     try std.testing.expect(got1.?.num == 10);
@@ -221,7 +229,6 @@ test "Table.basic" {
     var got2 = table.get(str2);
     try std.testing.expect(got2.?.bool == true);
 
-    // Resize happens here
     try std.testing.expect(try table.set(str3, val3));
     try std.testing.expect(table.capacity > 2);
 
@@ -234,6 +241,12 @@ test "Table.basic" {
 
     try std.testing.expect(table.delete(str1));
     try std.testing.expect(!table.delete(str4));
+
+    var str5 = try String.fromSlice(a, "foo");
+    var val5 = IvyType.number(30);
+    defer str5.deinit(a);
+
+    try std.testing.expect(try table.set(str5, val5));
 }
 
 test "Table.addAll" {
