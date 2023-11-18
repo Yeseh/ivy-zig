@@ -53,6 +53,8 @@ I have the following general learning goals
         - In this case the program states should also be able to refl
     - Testing is important for this!
 
+- I'm training Copilot to translate C to Zig, it got better as I went along
+
 
 ## References
 - https://floooh.github.io/2018/06/17/handles-vs-pointers.html

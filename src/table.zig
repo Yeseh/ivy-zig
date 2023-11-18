@@ -1,27 +1,61 @@
 const std = @import("std");
 const types = @import("types.zig");
-
 const IvyType = types.IvyType;
 const String = types.String;
+
+// NOTE: The current implementation passes handles around instead of referring directly to entries by reference.
+//       Not sure if that comes at a major performance cost. It's probably fine, and the API is more explicit.
+//       The union approach feels very nice to use, but it's not clear if it's worth it.
+//       Lets try this more expressive ziggy way first.
+// TODO: Reimplement pointer api
+// TODO: Benchmark handle vs pointer based api during optimization
+// TODO: Try to use the 'encoding' strategy (DoD) for entry cache optimalization
 
 pub const Table = @This();
 const Self = @This();
 // How full the table can be before we grow it. As a fraction of the capacity.
 const TABLE_MAX_LOAD: f64 = 0.75;
+const TableSize = u32;
 
-const EntryHandle = u32;
-const Entry = struct { key: ?*String = null, value: IvyType = .nil };
+const Entry = union(Tag) {
+    const Bucket = struct { key: ?*String = null, value: IvyType = .nil };
+    const Tag = enum {
+        tombstone,
+        empty,
+        bucket,
+    };
+    const Handle = union(Tag) {
+        tombstone: TableSize,
+        empty: TableSize,
+        bucket: TableSize,
+    };
 
-count: u32,
-capacity: u32,
+    tombstone,
+    empty: Bucket,
+    bucket: Bucket,
+
+    pub fn empty() Entry {
+        return Entry{ .empty = .{ .key = null, .value = .nil } };
+    }
+
+    pub fn bucket(b: Entry.Bucket) Entry {
+        return Entry{ .bucket = b };
+    }
+
+    pub fn tombstone() Entry {
+        return Entry{ .tombstone = undefined };
+    }
+};
+
+count: TableSize,
+capacity: TableSize,
 entries: [*]Entry,
 alloc: std.mem.Allocator,
 
-pub fn init(alloc: std.mem.Allocator, capacity: u32) !Self {
+pub fn init(alloc: std.mem.Allocator, capacity: TableSize) !Self {
     var entries = try alloc.alloc(Entry, capacity);
-    for (entries) |*entry| {
-        entry.key = null;
-        entry.value = .nil;
+    for (0..capacity) |i| {
+        entries[i] = Entry.empty();
     }
     return .{ .alloc = alloc, .capacity = capacity, .count = 0, .entries = entries.ptr };
 }
@@ -46,37 +80,80 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
     if (addCount > maxCapacity) {
         try self.adjustCapacity(self.capacity + 1);
     }
-    var entry = self.find(key);
-    var isNew = entry.key == null;
-    if (isNew) {
-        entry.key = key;
-        entry.value = value;
-        self.count += 1;
+    var handle = self.find(key);
+
+    switch (handle) {
+        // Key already exists
+        .bucket => {
+            return false;
+        },
+        // Recycle a tombstone
+        .tombstone => {
+            var bucket = Entry.Bucket{
+                .key = key,
+                .value = value,
+            };
+            self.entries[handle.tombstone] = Entry.bucket(bucket);
+            return true;
+        },
+        // Use an empty bucket
+        .empty => {
+            var bucket = Entry.Bucket{
+                .key = key,
+                .value = value,
+            };
+            self.entries[handle.empty] = Entry.bucket(bucket);
+            self.count += 1;
+            return true;
+        },
     }
-    return isNew;
 }
 
 pub fn get(self: *Self, key: *String) ?IvyType {
     if (self.count == 0) return null;
 
-    var entry = self.find(key);
-    if (entry.key == null) return null;
+    var handle = self.find(key);
+    if (handle == .bucket) {
+        return self.entries[handle.bucket].bucket.value;
+    }
 
-    return entry.value;
+    return null;
 }
 
-// NOTE: Weird API where we return a pointer to an entry in the table even if that entry is empty.
-//      This is because we need to return a pointer to the entry so that the caller can mutate it.
-//      But do we want that? It's not safe if we reallocate the table and the pointer becomes invalid.
-// TODO: Replace with EntryHandle?
-pub fn find(self: *Self, key: *String) *Entry {
+pub fn delete(self: *Self, key: *String) bool {
+    if (self.count == 0) return false;
+
+    var handle = self.find(key);
+    if (handle == .bucket) {
+        self.entries[handle.bucket] = Entry.tombstone();
+        return true;
+    }
+
+    return false;
+}
+
+fn find(self: *Self, key: *String) Entry.Handle {
     var index = key.hash % self.capacity;
+    var tombstone: ?Entry.Handle = null;
 
     while (true) {
         var entry = &self.entries[index];
-        if (entry.key == key or entry.key == null) {
-            return entry;
+        switch (entry.*) {
+            // There is a bucket entry here
+            .bucket => {
+                if (entry.bucket.key == key) return .{ .bucket = index };
+            },
+            // We found an empty bucket
+            // If we previously found a tombstone, we'll return that instead so it can be recycled
+            .empty => {
+                return tombstone orelse .{ .empty = index };
+            },
+            // We found a tombstone entry, set it and keep going
+            .tombstone => {
+                if (tombstone == null) tombstone = .{ .tombstone = index };
+            },
         }
+
         index = (index + 1) % self.capacity;
     }
 }
@@ -85,24 +162,24 @@ fn allocatedSlice(self: *Self) []Entry {
     return self.entries[0..self.capacity];
 }
 
-fn growCapacity(self: *Self, minimum: u32) u32 {
-    var newCapacity = self.capacity;
-    while (true) {
-        newCapacity +|= newCapacity / 2 + 8;
-        if (newCapacity >= minimum)
-            return newCapacity;
-    }
-}
-
 fn adjustCapacity(self: *Self, new: u32) !void {
     var newTable = try Table.init(self.alloc, new);
-    for (self.allocatedSlice()) |*entry| {
-        if (entry.key == null) continue;
-        var dest = newTable.find(entry.key.?);
-        dest.key = entry.key;
-        dest.value = entry.value;
-        if (dest.key != null) {
-            newTable.count += 1;
+
+    for (self.allocatedSlice()) |entry| {
+        // Don't copy empty or tombstone entries
+        if (entry != .bucket) continue;
+
+        var handle = newTable.find(entry.bucket.key.?);
+        switch (handle) {
+            .tombstone => {},
+            .bucket => {
+                newTable.entries[handle.bucket] = Entry.bucket(entry.bucket);
+                newTable.count += 1;
+            },
+            .empty => {
+                newTable.entries[handle.empty] = Entry.bucket(entry.bucket);
+                newTable.count += 1;
+            },
         }
     }
 
@@ -131,10 +208,11 @@ test "Table.basic" {
 
     try std.testing.expect(try table.set(str1, val1));
     // try std.testing.expectEqual(table.capacity, 2);
+    try std.testing.expectEqual(table.count, 1);
 
     try std.testing.expect(try table.set(str2, val2));
     try std.testing.expect(!(try table.set(str2, val2)));
-    try std.testing.expect(table.capacity > 2);
+    std.debug.print("table.capacity: {}\n", .{table.capacity});
     try std.testing.expectEqual(table.count, 2);
 
     var got1 = table.get(str1);
@@ -145,6 +223,7 @@ test "Table.basic" {
 
     // Resize happens here
     try std.testing.expect(try table.set(str3, val3));
+    try std.testing.expect(table.capacity > 2);
 
     var got3 = table.get(str3);
     try std.testing.expect(got3.?.num == 20);
@@ -152,6 +231,9 @@ test "Table.basic" {
 
     var got4 = table.get(str4);
     try std.testing.expect(got4 == null);
+
+    try std.testing.expect(table.delete(str1));
+    try std.testing.expect(!table.delete(str4));
 }
 
 test "Table.addAll" {
