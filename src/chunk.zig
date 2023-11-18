@@ -109,13 +109,7 @@ pub const Chunk = struct {
         unreachable;
     }
 
-    // Primitive GC
     pub fn deinit(self: *Self) void {
-        for (self.constants.items) |*it| {
-            if (it.is_obj()) {
-                @constCast(it).free_object(self.alloc);
-            }
-        }
         self.constants.deinit();
         self.code.deinit();
         self.lines.deinit();

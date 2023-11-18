@@ -37,7 +37,9 @@ pub fn runVm(allocator: std.mem.Allocator, source: [:0]const u8, expected: VmTes
     defer vm.deinit();
 
     var val = try vm.interpret(@constCast(source)); //catch |err| {
-    defer val.free_object(allocator);
+    if (val == .object) {
+        defer val.object.as(String).deinit(allocator);
+    }
 
     std.debug.print("got {s} {any}\n", .{ @tagName(val), val });
 

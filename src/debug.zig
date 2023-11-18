@@ -30,7 +30,7 @@ pub fn disassemble_lines(chunk: *Chunk) void {
 pub fn dump_stack(vm: *VM) void {
     for (0..vm.stack.items.len) |i| {
         var item = vm.stack.items[i];
-        std.debug.print("        > [ {s} ", .{@tagName(item)});
+        std.debug.print("        | [ {s} ", .{@tagName(item)});
         item.print();
         std.debug.print(" ]\n", .{});
     }
@@ -43,7 +43,7 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
     const instruction = @as(OpCode, @enumFromInt(chunk.get_op(offset)));
 
     if (offset > 0 and line == prev_line) {
-        std.debug.print("   | ", .{});
+        std.debug.print("   > ", .{});
     } else {
         std.debug.print("{d:>4} ", .{line});
     }

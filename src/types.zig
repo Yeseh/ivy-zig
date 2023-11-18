@@ -3,6 +3,7 @@ const common = @import("common.zig");
 const ArrayList = std.ArrayList;
 const RuntimeErrror = common.RuntimeError;
 const Table = common.Table;
+const OM = @import("garbage.zig").OM;
 
 pub const ObjectType = enum(u8) {
     String,
@@ -15,6 +16,7 @@ pub const Object = extern struct {
     const Self = @This();
 
     ty: ObjectType,
+    next: ?*Self,
 
     pub fn as(self: *Self, comptime T: type) *T {
         return @ptrCast(@alignCast(self));
@@ -59,6 +61,11 @@ pub const String = extern struct {
         return str;
     }
 
+    fn _initObj(self: *Self) void {
+        self._obj.ty = ObjectType.String;
+        @constCast(&OM).register(&self._obj);
+    }
+
     /// Creates a new string Object from a slice.
     /// Copies the slice passed in, and takes ownership of the copy.
     pub fn copyInterned(alloc: std.mem.Allocator, chars: []const u8, table: *Table) !*Self {
@@ -77,7 +84,7 @@ pub const String = extern struct {
     /// Initializes a string by taking ownership of the slice passed in.
     pub fn create(alloc: std.mem.Allocator, chars: []const u8) !*Self {
         var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
+        _initObj(str);
         str._len = chars.len;
         str._buf = @constCast(chars.ptr);
         str._capacity = chars.len;
@@ -89,7 +96,7 @@ pub const String = extern struct {
         @memcpy(buf, slice.ptr);
 
         var str = try alloc.create(Self);
-        str._obj.ty = ObjectType.String;
+        _initObj(str);
         str._buf = buf.ptr;
         str._capacity = buf.len;
         str._len = slice.len;
@@ -253,19 +260,6 @@ pub const IvyType = union(enum) {
         };
     }
 
-    /// Releases the memory for a heap allocated object if this type is an object.
-    pub fn free_object(self: *Self, alloc: std.mem.Allocator) void {
-        std.debug.print("Freeing object {any}\n", .{self});
-        switch (self.*) {
-            .object => {
-                switch (self.object.ty) {
-                    .String => self.object_as(String).deinit(alloc),
-                }
-            },
-            else => {},
-        }
-    }
-
     pub inline fn object_as(self: *const Self, comptime DestType: type) *DestType {
         std.debug.assert(@constCast(self).is_obj());
         return @ptrCast(@alignCast(self.object));
@@ -303,6 +297,8 @@ pub fn eql(a: IvyType, b: IvyType) bool {
     if (std.mem.eql(u8, @tagName(a), @tagName(b))) {
         return false;
     }
+
+    std.debug.print("Comparing {any} and {any}\n", .{ a, b });
 
     return switch (a) {
         .bool => a.bool == b.bool,

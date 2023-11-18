@@ -7,6 +7,7 @@ const compiler = @import("compiler.zig");
 const Compiler = compiler.Compiler;
 const Scanner = @import("scanner.zig").Scanner;
 const Table = @import("table.zig");
+const garbage = @import("garbage.zig");
 
 const Chunk = chunk.Chunk;
 const ChunkError = chunk.ChunkError;
@@ -37,10 +38,9 @@ pub const VirtualMachine = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        std.debug.print("Deinit VM\n", .{});
         self.strings.deinit();
         self.stack.deinit();
-        // self.retval.free_object(self.alloc);
+        @constCast(&garbage.OM).free(self.alloc);
     }
 
     /// Interpret a source string and return the value of the RETURN operation
