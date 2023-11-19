@@ -61,11 +61,6 @@ pub const String = extern struct {
         return str;
     }
 
-    fn _initObj(self: *Self) void {
-        self._obj.ty = ObjectType.String;
-        @constCast(&OM).register(&self._obj);
-    }
-
     /// Creates a new string Object from a slice.
     /// Copies the slice passed in, and takes ownership of the copy.
     pub fn copyInterned(alloc: std.mem.Allocator, chars: []const u8, table: *Table) !*Self {
@@ -84,7 +79,7 @@ pub const String = extern struct {
     /// Initializes a string by taking ownership of the slice passed in.
     pub fn create(alloc: std.mem.Allocator, chars: []const u8) !*Self {
         var str = try alloc.create(Self);
-        _initObj(str);
+        str._obj.ty = ObjectType.String;
         str._len = chars.len;
         str._buf = @constCast(chars.ptr);
         str._capacity = chars.len;
@@ -96,9 +91,9 @@ pub const String = extern struct {
         @memcpy(buf, slice.ptr);
 
         var str = try alloc.create(Self);
-        _initObj(str);
+        str._obj.ty = ObjectType.String;
         str._buf = buf.ptr;
-        str._capacity = buf.len;
+        str._capacity = buf.len + 1;
         str._len = slice.len;
         return str;
     }
@@ -219,12 +214,16 @@ pub const IvyType = union(enum) {
     }
 
     pub fn string(str: *String) Self {
-        return Self{ .object = @ptrCast(@alignCast(str)) };
+        var objptr: *Object = @ptrCast(@alignCast(str));
+        OM.register(objptr);
+        return Self{ .object = objptr };
     }
 
     // TODO: Is there a zig comptime magic way to infer T from the pointer type?
     pub fn obj(comptime T: type, ptr: T) IvyType {
-        return IvyType{ .object = @ptrCast(@alignCast(ptr)) };
+        var o = IvyType{ .object = @ptrCast(@alignCast(ptr)) };
+        OM.register(o.object);
+        return o;
     }
 
     pub fn print(self: *const Self) void {
@@ -255,7 +254,11 @@ pub const IvyType = union(enum) {
             .bool => IvyType.boolean(self.bool),
             .nil => IvyType.nil(),
             .object => switch (self.object.ty) {
-                .String => IvyType.string(try String.copy(alloc, self.object_as(String).asSlice())),
+                .String => blk: {
+                    var str = self.object_as(String);
+                    var copy = try String.copy(alloc, std.mem.sliceTo(str.allocatedSlice(), 0));
+                    break :blk IvyType.string(copy);
+                },
             },
         };
     }
@@ -294,12 +297,6 @@ pub const IvyType = union(enum) {
 };
 
 pub fn eql(a: IvyType, b: IvyType) bool {
-    if (std.mem.eql(u8, @tagName(a), @tagName(b))) {
-        return false;
-    }
-
-    std.debug.print("Comparing {any} and {any}\n", .{ a, b });
-
     return switch (a) {
         .bool => a.bool == b.bool,
         .num => a.num == b.num,
@@ -342,7 +339,7 @@ test "String" {
     var slice = "Hello, World!";
     {
         var string = try String.create(allocator, slice);
-        defer string.deinit(allocator);
+        //defer string.deinit(allocator);
         try std.testing.expectEqual(string.len(), 8);
         try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(8));
     }

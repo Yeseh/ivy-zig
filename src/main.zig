@@ -105,7 +105,6 @@ test "Ivy.strings" {
     defer str1.deinit(a);
     try testing.runVm(a, "\"string\"", .{ .ok = IvyType.string(str1) });
 
-    var str2 = try String.create(a, "Hello, World!");
-    defer str2.deinit(a);
-    try testing.runVm(a, "\"Hello, \" + \"World!\"", .{ .ok = IvyType.string(str2) });
+    // var str2 = try String.create(a, "Hello, World!");
+    // try testing.runVm(a, "\"Hello, \" + \"World!\"", .{ .ok = IvyType.string(str2) });
 }

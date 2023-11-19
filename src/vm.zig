@@ -34,13 +34,19 @@ pub const VirtualMachine = struct {
     pub fn init(alloc: std.mem.Allocator) !Self {
         var stack = try std.ArrayList(IvyType).initCapacity(alloc, STACK_MAX);
         var table = try Table.init(alloc, 8);
-        return VirtualMachine{ .chunk = undefined, .ip = undefined, .alloc = alloc, .stack = stack, .strings = table };
+        return VirtualMachine{
+            .chunk = undefined,
+            .ip = undefined,
+            .alloc = alloc,
+            .stack = stack,
+            .strings = table,
+        };
     }
 
     pub fn deinit(self: *Self) void {
         self.strings.deinit();
         self.stack.deinit();
-        @constCast(&garbage.OM).free(self.alloc);
+        self.om.free(self.alloc);
     }
 
     /// Interpret a source string and return the value of the RETURN operation
@@ -66,7 +72,6 @@ pub const VirtualMachine = struct {
         std.debug.print("\n=> ", .{});
         retval.print();
         std.debug.print("\n", .{});
-        std.debug.print("returned: {any}\n", .{retval});
 
         return retval;
     }

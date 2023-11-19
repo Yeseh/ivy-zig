@@ -318,11 +318,11 @@ pub const Compiler = struct {
     fn string(self: *Self) void {
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
 
-        const str = String.create(self.alloc, chars) catch {
+        const str = String.copy(self.alloc, chars) catch {
             self.err_at_cur("Out of memory.");
             return;
         };
-        const obj = IvyType.obj(@TypeOf(str), str);
+        const obj = IvyType.string(str);
         self.emit_constant(obj);
     }
 
@@ -367,11 +367,13 @@ pub const Compiler = struct {
 
 test "Compiler.strings" {
     const alloc = std.testing.allocator;
+    const om = @import("garbage.zig").OM;
     const tst = @import("test/testing.zig");
     {
         var source = "\"hello world\"";
         var cnk: Chunk = try Chunk.init(alloc);
         defer cnk.deinit();
+        defer @constCast(&om).free(alloc);
 
         var scan = try Scanner.init(alloc, source);
         var comp = Compiler.init(alloc, &scan);

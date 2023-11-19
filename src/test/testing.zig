@@ -37,12 +37,6 @@ pub fn runVm(allocator: std.mem.Allocator, source: [:0]const u8, expected: VmTes
     defer vm.deinit();
 
     var val = try vm.interpret(@constCast(source)); //catch |err| {
-    if (val == .object) {
-        defer val.object.as(String).deinit(allocator);
-    }
-
-    std.debug.print("got {s} {any}\n", .{ @tagName(val), val });
-
     switch (expected) {
         .ok => try assertReturn(expected.ok, val),
         else => unreachable,
@@ -64,6 +58,7 @@ pub fn assertReturn(expected: IvyType, actual: IvyType) !void {
             try std.testing.expectEqual(expected.num, actual.num);
         },
         .object => {
+            std.debug.print("actual: {any}\n", .{actual.object.ty});
             try std.testing.expectEqual(expected.object.ty, actual.object.ty);
             switch (expected.object.ty) {
                 .String => {
