@@ -228,6 +228,7 @@ pub const IvyType = union(enum) {
         return Self{ .object = @ptrCast(@alignCast(str)) };
     }
 
+    // TODO: Use std.fmt instead of debug
     pub fn print(self: *const Self) void {
         switch (self.*) {
             .bool => std.debug.print("{}", .{self.bool}),

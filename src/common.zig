@@ -25,6 +25,7 @@ pub const OpCode = enum(u8) {
     EQUAL,
     GREATER,
     LESS,
+    PRINT,
     // TODO: INCREMENT and DECREMENT
     // INCREMENT,
 };

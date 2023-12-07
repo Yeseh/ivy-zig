@@ -159,8 +159,9 @@ pub const Compiler = struct {
         self.chunk = chunk;
 
         self.advance();
-        self.expression();
-        self.eat(TokenType.EOF, "Expect end of expression.");
+        while (!self.match(.EOF)) {
+            self.declaration();
+        }
         self.end() catch {
             self.err("Out of memory.");
         };
@@ -170,6 +171,19 @@ pub const Compiler = struct {
 
     fn current_chunk(self: *Self) *Chunk {
         return self.chunk;
+    }
+
+    fn check(self: *Self, tt: TokenType) bool {
+        return self.cur.type == tt;
+    }
+
+    fn match(self: *Self, tt: TokenType) bool {
+        if (!self.check(tt)) {
+            return false;
+        }
+
+        self.advance();
+        return true;
     }
 
     fn eat(self: *Self, tt: TokenType, msg: []const u8) void {
@@ -335,6 +349,29 @@ pub const Compiler = struct {
             // try debug.disassemble_chunk(self.chunk, "code");
         }
         self.emit_return();
+    }
+
+    fn declaration(self: *Self) void {
+        self.statement();
+    }
+
+    fn statement(self: *Self) void {
+        if (self.match(.PRINT)) {
+            self.printStatement();
+        } else {
+            self.expressionStatement();
+        }
+    }
+
+    fn expressionStatement(self: *Self) void {
+        self.expression();
+        self.eat(.SEMICOLON, "Expect ';' after value.");
+    }
+
+    fn printStatement(self: *Self) void {
+        self.expression();
+        self.eat(.SEMICOLON, "Expect ';' after value.");
+        self.emit_op(.PRINT);
     }
 
     fn expression(self: *Self) void {

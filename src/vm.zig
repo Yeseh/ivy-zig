@@ -48,9 +48,8 @@ pub const VirtualMachine = struct {
     }
 
     /// Interpret a source string and return the value of the RETURN operation
-    pub fn interpret(self: *Self, source: [:0]u8) !IvyType {
+    pub fn interpret(self: *Self, source: [:0]u8) !void {
         var cnk: Chunk = try Chunk.init(self.alloc);
-        var retval = IvyType.nil();
         // TODO: Or maybe write the chunk somewhere for a next pass?
         defer cnk.deinit();
 
@@ -65,16 +64,10 @@ pub const VirtualMachine = struct {
 
         self.chunk = &cnk;
         self.ip = self.chunk.get_op_ptr();
-
-        retval = try self.run();
-        std.debug.print("\n=> ", .{});
-        retval.print();
-        std.debug.print("\n", .{});
-
-        return retval;
+        try self.run();
     }
 
-    pub fn run(self: *Self) !IvyType {
+    pub fn run(self: *Self) !void {
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
                 debug.dump_stack(self);
@@ -138,9 +131,13 @@ pub const VirtualMachine = struct {
                 .EQUAL => try self.binary_operation(instruction),
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
+                .PRINT => {
+                    var value = self.stack.pop();
+                    value.print();
+                    std.debug.print("\n", .{});
+                },
                 .RETURN => {
-                    var value = if (self.stack.items.len == 0) IvyType.nil() else self.stack.pop();
-                    return value;
+                    break;
                 },
             }
         }
@@ -216,5 +213,5 @@ test "test interpreter" {
     table.strings = try table.Table.init(alloc, 8);
     defer vm.deinit();
     const source = "1 + 2 * 3 - 4 / 5";
-    _ = try vm.interpret(@constCast(source));
+    try vm.interpret(@constCast(source));
 }
