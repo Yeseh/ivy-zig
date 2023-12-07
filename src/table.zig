@@ -17,10 +17,6 @@ const Self = @This();
 const TABLE_MAX_LOAD: f64 = 0.75;
 const TableSize = u32;
 
-/// Global table of all strings in the program.
-/// This is managed by the VM
-pub var strings: Table = undefined;
-
 const Entry = union(Tag) {
     const Bucket = struct { key: ?*String = null, value: IvyType = .nil };
     const Tag = enum {
@@ -80,6 +76,7 @@ pub fn addAll(self: *Self, other: *Self) !void {
 }
 
 pub fn set(self: *Self, key: *String, value: IvyType) !bool {
+    std.debug.print("Table.set: {s} {}\n", .{ key.asSlice(), value });
     var maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
     var addCount = @as(f64, @floatFromInt(self.count + 1));
     if (addCount > maxCapacity) {
@@ -91,6 +88,7 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
     switch (handle) {
         // Key already exists
         .full => {
+            self.entries[handle.full].full.value = value;
             return false;
         },
         // Recycle a tombstone

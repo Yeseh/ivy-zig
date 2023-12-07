@@ -15,7 +15,7 @@ const Scanner = scanner.Scanner;
 const TokenType = scanner.TokenType;
 const Token = scanner.Token;
 const OpCode = common.OpCode;
-const ParseFn = *const fn (*Compiler) void;
+const ParseFn = *const fn (*Compiler, bool) void;
 const U8Max = 255;
 
 pub const Precedence = enum {
@@ -104,7 +104,7 @@ pub const Compiler = struct {
                 ParseRule{ .precedence = .COMPARISON, .prefix = null, .infix = &binary },
 
                 // IDENTIFIER
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &variable, .infix = null },
                 // STRING
                 ParseRule{ .precedence = .NONE, .prefix = &string, .infix = null },
                 // NUMBER
@@ -238,10 +238,10 @@ pub const Compiler = struct {
     }
 
     fn emit_constant(self: *Self, value: IvyType) void {
-        self.emit_bytes(@intFromEnum(OpCode.CONSTANT), self.make_constant(value));
+        self.emit_bytes(@intFromEnum(OpCode.CONSTANT), self.makeConstant(value));
     }
 
-    fn make_constant(self: *Self, value: IvyType) u8 {
+    fn makeConstant(self: *Self, value: IvyType) u8 {
         var constant = self.chunk.add_constant(value) catch {
             self.err("Out of memory.");
             return 0;
@@ -254,12 +254,14 @@ pub const Compiler = struct {
         return @as(u8, @intCast(constant));
     }
 
-    fn grouping(self: *Self) void {
+    fn grouping(self: *Self, canAssign: bool) void {
+        _ = canAssign;
         self.expression();
         self.eat(.RPAREN, "Expect ')' after expression.");
     }
 
-    fn literal(self: *Self) void {
+    fn literal(self: *Self, canAssign: bool) void {
+        _ = canAssign;
         switch (self.prev.type) {
             .FALSE => self.emit_op(.FALSE),
             .NIL => self.emit_op(.NIL),
@@ -268,11 +270,12 @@ pub const Compiler = struct {
         }
     }
 
-    fn binary(self: *Self) void {
+    fn binary(self: *Self, canAssign: bool) void {
+        _ = canAssign;
         var op_type = self.prev.type;
         var rule = self.get_rule(op_type);
         var pres = @intFromEnum(rule.precedence) + 1;
-        self.parse_precedence(@as(Precedence, @enumFromInt(pres)));
+        self.parsePrecedence(@as(Precedence, @enumFromInt(pres)));
 
         switch (op_type) {
             .PLUS => self.emit_op(.ADD),
@@ -290,9 +293,10 @@ pub const Compiler = struct {
         }
     }
 
-    fn unary(self: *Self) void {
+    fn unary(self: *Self, canAssign: bool) void {
+        _ = canAssign;
         var op_type = self.prev.type;
-        self.parse_precedence(.UNARY);
+        self.parsePrecedence(.UNARY);
 
         switch (op_type) {
             TokenType.MINUS => self.emit_op(.NEGATE),
@@ -301,7 +305,7 @@ pub const Compiler = struct {
         }
     }
 
-    fn parse_precedence(self: *Self, pres: Precedence) void {
+    fn parsePrecedence(self: *Self, pres: Precedence) void {
         self.advance();
 
         var prefix = self.get_rule(self.prev.type).prefix orelse {
@@ -309,18 +313,42 @@ pub const Compiler = struct {
             return;
         };
 
-        prefix(self);
+        var canAssign = @intFromEnum(pres) <= @intFromEnum(Precedence.ASSIGNMENT);
+        prefix(self, canAssign);
 
         while (@intFromEnum(pres) <= @intFromEnum(self.get_rule(self.cur.type).precedence)) {
             self.advance();
             var infix = self.get_rule(self.prev.type).infix orelse {
                 unreachable;
             };
-            infix(self);
+            infix(self, canAssign);
+        }
+
+        if (canAssign and self.match(.EQUAL)) {
+            self.err("Invalid assignment target.");
         }
     }
 
-    fn number(self: *Self) void {
+    fn parseVariable(self: *Self, msg: []const u8) u8 {
+        self.eat(.IDENTIFIER, msg);
+        return self.identifierConstant(&self.prev);
+    }
+
+    fn defineVariable(self: *Self, global: u8) void {
+        self.emit_ops(.DEFINE_GLOBAL, @enumFromInt(global));
+    }
+
+    fn identifierConstant(self: *Self, name: *Token) u8 {
+        var str = String.copyInterned(self.alloc, name.*.lex, &vm.strings) catch {
+            self.err_at_cur("Out of memory.");
+            return 0;
+        };
+        var obj = IvyType.string(str);
+        return self.makeConstant(obj);
+    }
+
+    fn number(self: *Self, canAssign: bool) void {
+        _ = canAssign;
         var value = std.fmt.parseFloat(f64, self.prev.lex) catch {
             self.err_at_cur("Invalid number.");
             return;
@@ -330,15 +358,32 @@ pub const Compiler = struct {
         self.emit_constant(num);
     }
 
-    fn string(self: *Self) void {
+    fn string(self: *Self, canAssign: bool) void {
+        _ = canAssign;
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
 
-        const str = String.copyInterned(self.alloc, chars, &table.strings) catch {
+        const str = String.copyInterned(self.alloc, chars, &vm.strings) catch {
             self.err_at_cur("Out of memory.");
             return;
         };
         const obj = IvyType.string(str);
         self.emit_constant(obj);
+    }
+
+    fn variable(self: *Self, canAssign: bool) void {
+        self.namedVariable(&self.prev, canAssign);
+    }
+
+    fn namedVariable(self: *Self, name: *Token, canAssign: bool) void {
+        var arg = self.identifierConstant(name);
+
+        if (canAssign and self.match(.EQUAL)) {
+            self.expression();
+            self.emit_ops(.SET_GLOBAL, @enumFromInt(arg));
+            return;
+        }
+
+        self.emit_ops(.GET_GLOBAL, @enumFromInt(arg));
     }
 
     fn end(self: *Self) !void {
@@ -352,7 +397,43 @@ pub const Compiler = struct {
     }
 
     fn declaration(self: *Self) void {
-        self.statement();
+        if (self.match(.VAR)) {
+            self.varDeclaration();
+        } else {
+            self.statement();
+        }
+
+        if (self.panic) self.synchronize();
+    }
+
+    fn varDeclaration(self: *Self) void {
+        var global = self.parseVariable("Expect variable name.");
+
+        if (self.match(.EQUAL)) {
+            self.expression();
+        } else {
+            self.emit_op(.NIL);
+        }
+        self.eat(.SEMICOLON, "Expect ';' after variable declaration.");
+
+        self.defineVariable(global);
+    }
+
+    fn synchronize(self: *Self) void {
+        self.panic = false;
+
+        while (self.cur.type != .EOF) {
+            if (self.prev.type == .SEMICOLON) {
+                return;
+            }
+
+            switch (self.cur.type) {
+                .CLASS, .FUN, .VAR, .FOR, .IF, .WHILE, .PRINT, .RETURN => return,
+                else => {},
+            }
+
+            self.advance();
+        }
     }
 
     fn statement(self: *Self) void {
@@ -366,6 +447,7 @@ pub const Compiler = struct {
     fn expressionStatement(self: *Self) void {
         self.expression();
         self.eat(.SEMICOLON, "Expect ';' after value.");
+        self.emit_op(.POP);
     }
 
     fn printStatement(self: *Self) void {
@@ -375,7 +457,7 @@ pub const Compiler = struct {
     }
 
     fn expression(self: *Self) void {
-        self.parse_precedence(.ASSIGNMENT);
+        self.parsePrecedence(.ASSIGNMENT);
     }
 
     fn err_at_cur(self: *Self, msg: []const u8) void {
@@ -410,10 +492,10 @@ test "Compiler.strings" {
     {
         var source = "\"hello world\"";
         var cnk: Chunk = try Chunk.init(alloc);
-        table.strings = try table.Table.init(alloc, 8);
+        vm.strings = try table.Table.init(alloc, 8);
         defer cnk.deinit();
         defer om.free(alloc);
-        defer table.strings.deinit();
+        defer vm.strings.deinit();
 
         var scan = try Scanner.init(alloc, source);
         var comp = Compiler.init(alloc, &scan);

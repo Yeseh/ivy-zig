@@ -22,6 +22,9 @@ pub const InterpreterError = error{
     RuntimeError,
 };
 
+pub var globals: table.Table = undefined;
+pub var strings: table.Table = undefined;
+
 pub const VirtualMachine = struct {
     const Self = @This();
 
@@ -32,7 +35,8 @@ pub const VirtualMachine = struct {
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         var stack = try std.ArrayList(IvyType).initCapacity(alloc, STACK_MAX);
-        table.strings = try table.init(alloc, 8);
+        globals = try table.init(alloc, 8);
+        strings = try table.init(alloc, 8);
         return VirtualMachine{
             .chunk = undefined,
             .ip = undefined,
@@ -44,7 +48,8 @@ pub const VirtualMachine = struct {
     pub fn deinit(self: *Self) void {
         self.stack.deinit();
         garbage.free(self.alloc);
-        table.strings.deinit();
+        strings.deinit();
+        globals.deinit();
     }
 
     /// Interpret a source string and return the value of the RETURN operation
@@ -131,10 +136,40 @@ pub const VirtualMachine = struct {
                 .EQUAL => try self.binary_operation(instruction),
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
+                .DEFINE_GLOBAL => {
+                    var name = self.read_constant().object_as(String);
+                    var isSet = try globals.set(name, self.peek_stack(0));
+                    if (!isSet) {
+                        try self.rt_error("Redefining existing variable.", .{});
+                        return InterpreterError.RuntimeError;
+                    }
+                    _ = self.stack.pop();
+                },
+                .GET_GLOBAL => {
+                    var global = globals.get(self.read_constant().object_as(String));
+                    if (global == null) {
+                        try self.rt_error("Undefined variable.", .{});
+                        return InterpreterError.RuntimeError;
+                    }
+                    try self.stack.append(global.?);
+                },
+                .SET_GLOBAL => {
+                    var name = self.read_constant().object_as(String);
+                    var set = try globals.set(name, self.peek_stack(0));
+                    if (set) {
+                        _ = globals.delete(name);
+                        // NOTE: No implicit variable declaration!
+                        try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
+                        return InterpreterError.RuntimeError;
+                    }
+                },
                 .PRINT => {
                     var value = self.stack.pop();
                     value.print();
                     std.debug.print("\n", .{});
+                },
+                .POP => {
+                    _ = self.stack.pop();
                 },
                 .RETURN => {
                     break;
@@ -151,7 +186,7 @@ pub const VirtualMachine = struct {
         // TODO: move all this to fn under String for neatness
         @memcpy(buf[0..a._len], a._buf[0..a._len]);
         @memcpy(buf[a._len .. a._len + b._len + 1], b._buf[0 .. b._len + 1]);
-        var str = try String.createInterned(self.alloc, buf, &table.strings);
+        var str = try String.createInterned(self.alloc, buf, &strings);
         return IvyType.string(str);
     }
 
@@ -210,7 +245,7 @@ pub const VirtualMachine = struct {
 test "test interpreter" {
     var alloc = std.heap.page_allocator;
     var vm = try VirtualMachine.init(alloc);
-    table.strings = try table.Table.init(alloc, 8);
+    vm.strings = try table.Table.init(alloc, 8);
     defer vm.deinit();
     const source = "1 + 2 * 3 - 4 / 5";
     try vm.interpret(@constCast(source));

@@ -1,3 +1,11 @@
-print "Hello, World!";
 print 1 + 2;
 print 1 * 2;
+print "bla";
+print "blo";
+print "bla";
+
+var hello = "xdxdxd";
+print hello + ", World!";
+hello = "bye";
+
+print hello;

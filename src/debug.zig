@@ -64,6 +64,10 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
         .LESS => simple_instruction("LESS", offset),
         .GREATER => simple_instruction("GREATER", offset),
         .PRINT => simple_instruction("PRINT", offset),
+        .POP => simple_instruction("POP", offset),
+        .DEFINE_GLOBAL => constant_instruction("DEFINE_GLOBAL", chunk, offset),
+        .GET_GLOBAL => constant_instruction("GET_GLOBAL", chunk, offset),
+        .SET_GLOBAL => constant_instruction("SET_GLOBAL", chunk, offset),
         //else => {
         //    std.debug.print("Unknown opcode {}\n", .{instruction});
         //    return offset + 1;

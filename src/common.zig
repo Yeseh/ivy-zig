@@ -26,6 +26,10 @@ pub const OpCode = enum(u8) {
     GREATER,
     LESS,
     PRINT,
+    POP,
+    DEFINE_GLOBAL,
+    GET_GLOBAL,
+    SET_GLOBAL,
     // TODO: INCREMENT and DECREMENT
     // INCREMENT,
 };

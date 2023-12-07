@@ -58,7 +58,7 @@ pub const String = extern struct {
         }
         var str = try String.create(alloc, chars);
         str.hash = hsh;
-        _ = try table.set(str, IvyType.nil());
+        _ = try table.set(str, IvyType.string(str));
 
         return str;
     }
@@ -73,7 +73,8 @@ pub const String = extern struct {
         }
         var str = try String.copy(alloc, chars);
         str.hash = hsh;
-        _ = try table.set(str, IvyType.nil());
+        // TODO: This should be IvyType.nil, but gets weird with global table
+        _ = try table.set(str, IvyType.string(str));
 
         return str;
     }
