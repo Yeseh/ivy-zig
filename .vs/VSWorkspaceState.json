@@ -1,0 +1,11 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\src",
+    "\\src\\object",
+    "\\zig-out",
+    "\\zig-out\\bin"
+  ],
+  "SelectedNode": "\\src\\common.zig",
+  "PreviewInSolutionExplorer": false
+}
