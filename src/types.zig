@@ -1,9 +1,10 @@
 const std = @import("std");
 const common = @import("common.zig");
+const garbage = @import("garbage.zig");
+
 const ArrayList = std.ArrayList;
 const RuntimeErrror = common.RuntimeError;
 const Table = common.Table;
-const OM = @import("garbage.zig").OM;
 
 pub const ObjectType = enum(u8) {
     String,
@@ -45,9 +46,10 @@ pub const String = extern struct {
     // NOTE: extern structs can't have them anyways. Puh.
     // allocator: std.mem.Allocator,
 
-    /// Creates a new string Object from a slice.
-    /// Takes ownership of the slice passed
-    pub fn createInterned(alloc: std.mem.Allocator, chars: []const u8, table: *Table) !*Self {
+    /// Creates a new string Object from a slice. Takes ownership of the slice passed in
+    /// Assumes that the slice include 1 byte for the null-terminator.
+    /// Calculates the string hash and saves the string to the Interment Table
+    pub fn createInterned(alloc: std.mem.Allocator, chars: []u8, table: *Table) !*Self {
         var hsh = String.hash(chars);
         var interned = table.findString(chars, hsh);
         if (interned != null) {
@@ -77,24 +79,33 @@ pub const String = extern struct {
     }
 
     /// Initializes a string by taking ownership of the slice passed in.
-    pub fn create(alloc: std.mem.Allocator, chars: []const u8) !*Self {
+    /// Assumes that the slice include 1 byte for the null-terminator.
+    /// Enusres that the string is null-terminated.
+    pub fn create(alloc: std.mem.Allocator, chars: []u8) !*Self {
         var str = try alloc.create(Self);
         str._obj.ty = ObjectType.String;
-        str._len = chars.len;
-        str._buf = @constCast(chars.ptr);
+        str._len = chars.len - 1;
+        str._buf = chars.ptr;
         str._capacity = chars.len;
+        str._buf[str._len] = 0;
+
+        garbage.mark(@ptrCast(@alignCast(str)));
+
         return str;
     }
 
     pub fn copy(alloc: std.mem.Allocator, slice: []const u8) !*Self {
-        var buf: [:0]u8 = try alloc.allocSentinel(u8, slice.len, 0);
+        var buf: []u8 = try alloc.alloc(u8, slice.len + 1);
         @memcpy(buf, slice.ptr);
 
         var str = try alloc.create(Self);
         str._obj.ty = ObjectType.String;
         str._buf = buf.ptr;
-        str._capacity = buf.len + 1;
         str._len = slice.len;
+        str._capacity = buf.len;
+        str._buf[str._len] = 0;
+        garbage.mark(@ptrCast(@alignCast(str)));
+
         return str;
     }
 
@@ -118,7 +129,7 @@ pub const String = extern struct {
         }
     }
 
-    fn allocatedSlice(self: *Self) []u8 {
+    pub fn allocatedSlice(self: *Self) []u8 {
         return self._buf[0..self._capacity];
     }
 
@@ -214,16 +225,7 @@ pub const IvyType = union(enum) {
     }
 
     pub fn string(str: *String) Self {
-        var objptr: *Object = @ptrCast(@alignCast(str));
-        OM.register(objptr);
-        return Self{ .object = objptr };
-    }
-
-    // TODO: Is there a zig comptime magic way to infer T from the pointer type?
-    pub fn obj(comptime T: type, ptr: T) IvyType {
-        var o = IvyType{ .object = @ptrCast(@alignCast(ptr)) };
-        OM.register(o.object);
-        return o;
+        return Self{ .object = @ptrCast(@alignCast(str)) };
     }
 
     pub fn print(self: *const Self) void {
@@ -316,7 +318,7 @@ pub fn eql(a: IvyType, b: IvyType) bool {
 
 // test "String.resizing" {
 //     const a = std.testing.allocator;
-//     var string = try String.init(a);
+// var string = try String.init(a);
 //     defer string.deinit(a);
 
 //     try std.testing.expectEqual(string._capacity, 8);
@@ -338,15 +340,21 @@ test "String" {
     const allocator = std.testing.allocator;
     var slice = "Hello, World!";
     {
-        var string = try String.create(allocator, slice);
-        //defer string.deinit(allocator);
-        try std.testing.expectEqual(string.len(), 8);
-        try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(8));
-    }
-    {
         var string = try String.copy(allocator, slice);
         defer string.deinit(allocator);
-        try std.testing.expectEqual(string.len(), 13);
+        try std.testing.expectEqual(string._len, 13);
+        try std.testing.expectEqual(string._capacity, 14);
+        try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(14));
+        try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
+    }
+    {
+        var buf = try allocator.alloc(u8, slice.len + 1);
+        @memcpy(buf, slice.ptr);
+        var string = try String.create(allocator, buf);
+        defer string.deinit(allocator);
+
+        try std.testing.expectEqual(string._len, 13);
+        try std.testing.expectEqual(string._capacity, 14);
         try std.testing.expectError(RuntimeErrror.IndexOutOfBounds, string.at(13));
         try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
     }

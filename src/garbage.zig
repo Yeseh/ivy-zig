@@ -4,53 +4,39 @@ const common = @import("common.zig");
 
 const IvyType = types.IvyType;
 const Object = types.Object;
+const ObjectType = types.ObjectType;
 const String = types.String;
+const ObjectManager = @This();
 
-/// Global linked list of all objects
-/// Primitive garbage collector
-pub const OM = ObjectManager{};
+var objects: ?*Object = null;
 
-pub const ObjectManager = struct {
-    objects: ?*Object = null,
+pub fn mark(obj: *Object) void {
+    obj.next = objects;
+    objects = obj;
+}
 
-    pub fn register(self: ObjectManager, obj: *Object) void {
-        std.debug.print("Registering object\n", .{});
-        obj.next = self.objects;
-        @constCast(&self).objects = obj;
+pub fn free(alloc: std.mem.Allocator) void {
+    if (common.DEBUG_PRINT_GC) {
+        std.debug.print("\n===GARBAGE COLLECTION===\n", .{});
     }
-
-    /// Frees all the objects in the object manager
-    /// Should only be called from the VM
-    pub fn free(self: *ObjectManager, alloc: std.mem.Allocator) void {
-        if (common.DEBUG_PRINT_GC) {
-            std.debug.print("\n=== GARBAGE COLLECTION ===\n", .{});
-            var count: u32 = 0;
-            var obj = self.objects;
-            while (obj != null) {
+    var obj = objects;
+    var count: u32 = 0;
+    while (obj != null) {
+        var next = obj.?.next;
+        switch (obj.?.ty) {
+            .String => {
+                var str = obj.?.as(String);
+                if (common.DEBUG_PRINT_GC) {
+                    std.debug.print("GC: String '{s}' {}\n", .{ str.asSlice(), str._obj });
+                }
+                str.deinit(alloc);
                 count += 1;
-                obj = obj.?.next;
-            }
-            std.debug.print("GC: {d} objects before collection\n", .{count});
+            },
         }
-        var obj = self.objects;
-        var count: u32 = 0;
-        while (obj != null) {
-            var next = obj.?.next;
-            switch (obj.?.ty) {
-                .String => {
-                    var str = obj.?.as(String);
-                    if (common.DEBUG_PRINT_GC) {
-                        std.debug.print("GC: String '{s}' {any}\n", .{ str.asSlice(), str });
-                    }
-                    str.deinit(alloc);
-                    count += 1;
-                },
-            }
-            obj = next;
-        }
-
-        if (common.DEBUG_PRINT_GC) {
-            std.debug.print("GC: {d} objects freed\n\n", .{count});
-        }
+        obj = next;
     }
-};
+
+    if (common.DEBUG_PRINT_GC) {
+        std.debug.print("GC: {d} objects freed\n\n", .{count});
+    }
+}

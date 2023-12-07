@@ -1,6 +1,7 @@
 const std = @import("std");
 const scanner = @import("scanner.zig");
 const vm = @import("vm.zig");
+const table = @import("table.zig");
 const types = @import("types.zig");
 
 const Chunk = @import("chunk.zig").Chunk;
@@ -318,7 +319,7 @@ pub const Compiler = struct {
     fn string(self: *Self) void {
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
 
-        const str = String.copy(self.alloc, chars) catch {
+        const str = String.copyInterned(self.alloc, chars, &table.strings) catch {
             self.err_at_cur("Out of memory.");
             return;
         };
@@ -367,13 +368,15 @@ pub const Compiler = struct {
 
 test "Compiler.strings" {
     const alloc = std.testing.allocator;
-    const om = @import("garbage.zig").OM;
+    const om = @import("garbage.zig");
     const tst = @import("test/testing.zig");
     {
         var source = "\"hello world\"";
         var cnk: Chunk = try Chunk.init(alloc);
+        table.strings = try table.Table.init(alloc, 8);
         defer cnk.deinit();
-        defer @constCast(&om).free(alloc);
+        defer om.free(alloc);
+        defer table.strings.deinit();
 
         var scan = try Scanner.init(alloc, source);
         var comp = Compiler.init(alloc, &scan);

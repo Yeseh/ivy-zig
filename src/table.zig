@@ -17,6 +17,10 @@ const Self = @This();
 const TABLE_MAX_LOAD: f64 = 0.75;
 const TableSize = u32;
 
+/// Global table of all strings in the program.
+/// This is managed by the VM
+pub var strings: Table = undefined;
+
 const Entry = union(Tag) {
     const Bucket = struct { key: ?*String = null, value: IvyType = .nil };
     const Tag = enum {
@@ -61,6 +65,7 @@ pub fn init(alloc: std.mem.Allocator, capacity: TableSize) !Self {
 }
 
 pub fn deinit(self: *Self) void {
+    std.debug.print("Table.deinit: {}\n", .{self.capacity});
     self.alloc.free(self.allocatedSlice());
     self.capacity = 0;
     self.count = 0;
@@ -149,9 +154,7 @@ pub fn findString(self: *Self, chars: []const u8, hash: u32) ?*String {
                     return entry.full.value.object_as(String);
             },
             // string is not in the table
-            .empty => {
-                return null;
-            },
+            .empty => return null,
             // Skip tombstones
             .tombstone => {},
         }

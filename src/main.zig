@@ -18,16 +18,18 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     const args = try std.process.argsAlloc(allocator);
     const argc = args.len;
+    _ = argc;
 
     var vm = try VM.init(allocator);
-    if (argc == 1) {
-        std.debug.print("Ivy REPL v0.0.1\n", .{});
-        try repl(allocator, &vm);
-    } else if (argc == 2) {
-        _ = try run_direct(allocator, &vm, args[1]);
-    } else {
-        std.debug.print("Usage: zivy [src]\n", .{});
-    }
+    _ = try run_direct(allocator, &vm, "\"Hello, \" + \"World!\"");
+    // if (argc == 1) {
+    //     std.debug.print("Ivy REPL v0.0.1\n", .{});
+    //     try repl(allocator, &vm);
+    // } else if (argc == 2) {
+    //     _ = try run_direct(allocator, &vm, "Hello, World!");
+    // } else {
+    //     std.debug.print("Usage: zivy [src]\n", .{});
+    // }
 
     std.process.argsFree(allocator, args);
     vm.deinit();
@@ -52,7 +54,7 @@ fn repl(alloc: std.mem.Allocator, vm: *VM) !void {
     }
 }
 
-fn run_direct(alloc: std.mem.Allocator, vm: *VM, cmd: []u8) !IvyType {
+fn run_direct(alloc: std.mem.Allocator, vm: *VM, cmd: []const u8) !IvyType {
     // 4096 is the maximum up front allocated size of the buffer in readToEndAlloc
     const sent_buf: [:0]u8 = try alloc.allocSentinel(u8, cmd.len, 0);
     @memcpy(sent_buf, cmd.ptr);
@@ -75,36 +77,35 @@ fn run_direct(alloc: std.mem.Allocator, vm: *VM, cmd: []u8) !IvyType {
 
 test "Ivy.arith" {
     std.debug.print("\n", .{});
-    const allocator = std.testing.allocator;
-    try testing.runVm(allocator, "1 + 2", .{ .ok = IvyType.number(3) });
-    try testing.runVm(allocator, "1 - 2", .{ .ok = IvyType.number(-1) });
-    try testing.runVm(allocator, "1 - -2", .{ .ok = IvyType.number(3) });
-    try testing.runVm(allocator, "2 * (1 - -2)", .{ .ok = IvyType.number(6) });
-    try testing.runVm(allocator, "(-1 + (2 * 4)) * 3 - -4", .{ .ok = IvyType.number(25) });
+    const a = std.testing.allocator;
+    try testing.runVm(a, "1 + 2", .{ .ok = IvyType.number(3) });
+    try testing.runVm(a, "1 - 2", .{ .ok = IvyType.number(-1) });
+    try testing.runVm(a, "1 - -2", .{ .ok = IvyType.number(3) });
+    try testing.runVm(a, "2 * (1 - -2)", .{ .ok = IvyType.number(6) });
+    try testing.runVm(a, "(-1 + (2 * 4)) * 3 - -4", .{ .ok = IvyType.number(25) });
 }
 
 test "Ivy.booleans" {
     std.debug.print("\n", .{});
-    const allocator = std.testing.allocator;
+    const a = std.testing.allocator;
 
-    try testing.runVm(allocator, "true", .{ .ok = IvyType.boolean(true) });
-    try testing.runVm(allocator, "!true", .{ .ok = IvyType.boolean(false) });
-    try testing.runVm(allocator, "5>4", .{ .ok = IvyType.boolean(true) });
-    try testing.runVm(allocator, "3>4", .{ .ok = IvyType.boolean(false) });
-    try testing.runVm(allocator, "3<4", .{ .ok = IvyType.boolean(true) });
-    try testing.runVm(allocator, "5<4", .{ .ok = IvyType.boolean(false) });
-    try testing.runVm(allocator, "5==4", .{ .ok = IvyType.boolean(false) });
-    try testing.runVm(allocator, "5==5", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(a, "true", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(a, "!true", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(a, "5>4", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(a, "3>4", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(a, "3<4", .{ .ok = IvyType.boolean(true) });
+    try testing.runVm(a, "5<4", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(a, "5==4", .{ .ok = IvyType.boolean(false) });
+    try testing.runVm(a, "5==5", .{ .ok = IvyType.boolean(true) });
 }
 
 test "Ivy.strings" {
     std.debug.print("\n", .{});
     const a = std.testing.allocator;
 
-    var str1 = try String.create(a, "string");
-    defer str1.deinit(a);
+    var str1 = try String.copy(a, "string");
     try testing.runVm(a, "\"string\"", .{ .ok = IvyType.string(str1) });
 
-    // var str2 = try String.create(a, "Hello, World!");
-    // try testing.runVm(a, "\"Hello, \" + \"World!\"", .{ .ok = IvyType.string(str2) });
+    var str2 = try String.copy(a, "Hello, World!");
+    try testing.runVm(a, "\"Hello, \" + \"World!\"", .{ .ok = IvyType.string(str2) });
 }

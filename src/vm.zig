@@ -6,7 +6,7 @@ const chunk = @import("chunk.zig");
 const compiler = @import("compiler.zig");
 const Compiler = compiler.Compiler;
 const Scanner = @import("scanner.zig").Scanner;
-const Table = @import("table.zig");
+const table = @import("table.zig");
 const garbage = @import("garbage.zig");
 
 const Chunk = chunk.Chunk;
@@ -29,24 +29,22 @@ pub const VirtualMachine = struct {
     chunk: *Chunk,
     stack: std.ArrayList(IvyType),
     alloc: std.mem.Allocator,
-    strings: Table,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         var stack = try std.ArrayList(IvyType).initCapacity(alloc, STACK_MAX);
-        var table = try Table.init(alloc, 8);
+        table.strings = try table.init(alloc, 8);
         return VirtualMachine{
             .chunk = undefined,
             .ip = undefined,
             .alloc = alloc,
             .stack = stack,
-            .strings = table,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.strings.deinit();
         self.stack.deinit();
-        self.om.free(self.alloc);
+        garbage.free(self.alloc);
+        table.strings.deinit();
     }
 
     /// Interpret a source string and return the value of the RETURN operation
@@ -156,10 +154,7 @@ pub const VirtualMachine = struct {
         // TODO: move all this to fn under String for neatness
         @memcpy(buf[0..a._len], a._buf[0..a._len]);
         @memcpy(buf[a._len .. a._len + b._len + 1], b._buf[0 .. b._len + 1]);
-
-        var str = try String.createInterned(self.alloc, buf, &self.strings);
-        str._len = capacity - 1;
-
+        var str = try String.createInterned(self.alloc, buf, &table.strings);
         return IvyType.string(str);
     }
 
@@ -218,6 +213,7 @@ pub const VirtualMachine = struct {
 test "test interpreter" {
     var alloc = std.heap.page_allocator;
     var vm = try VirtualMachine.init(alloc);
+    table.strings = try table.Table.init(alloc, 8);
     defer vm.deinit();
     const source = "1 + 2 * 3 - 4 / 5";
     _ = try vm.interpret(@constCast(source));

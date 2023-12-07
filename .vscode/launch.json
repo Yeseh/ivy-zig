@@ -7,7 +7,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/zig-out/bin/zivy.exe",
             "args": [
-                "\"string\""
+                "test",
+                "src/vm.zig"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

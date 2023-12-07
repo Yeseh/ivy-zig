@@ -1,0 +1,12 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "zig-out\\bin\\zivy.exe",
+      "projectTarget": "",
+      "name": "zivy.exe"
+    }
+  ]
+}
