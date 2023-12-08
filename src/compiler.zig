@@ -17,6 +17,7 @@ const Token = scanner.Token;
 const OpCode = common.OpCode;
 const ParseFn = *const fn (*Parser, bool) void;
 const U8Max = 255;
+const U16Max = 65535;
 const LOCAL_COUNT = U8Max + 1;
 
 pub const Precedence = enum {
@@ -237,6 +238,8 @@ pub const Parser = struct {
     fn statement(self: *Self) void {
         if (self.match(.PRINT)) {
             self.printStatement();
+        } else if (self.match(.IF)) {
+            self.ifStatement();
         } else if (self.match(.LBRACE)) {
             self.beginScope();
             self.block();
@@ -256,6 +259,24 @@ pub const Parser = struct {
         self.expression();
         self.eat(.SEMICOLON, "Expect ';' after value.");
         self.emit_op(.POP);
+    }
+
+    fn ifStatement(self: *Self) void {
+        self.eat(.LPAREN, "Expect '(' after 'if'.");
+        self.expression();
+        self.eat(.RPAREN, "Expect ')' after condition.");
+
+        var thenJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        self.emit_op(.POP);
+        self.statement();
+        var elseJump = self.emitJump(@intFromEnum(OpCode.JUMP));
+
+        self.patchJump(thenJump);
+        self.emit_op(.POP);
+        if (self.match(.ELSE)) {
+            self.statement();
+        }
+        self.patchJump(elseJump);
     }
 
     fn block(self: *Self) void {
@@ -585,6 +606,23 @@ pub const Parser = struct {
 
     fn emit_constant(self: *Self, value: IvyType) void {
         self.emit_bytes(@intFromEnum(OpCode.CONSTANT), self.makeConstant(value));
+    }
+
+    fn emitJump(self: *Self, op: u8) u32 {
+        self.emit_byte(op);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        return @intCast(self.chunk.code.items.len - 2);
+    }
+
+    fn patchJump(self: *Self, offset: u32) void {
+        var jump = self.chunk.code.items.len - offset - 2;
+        if (jump > U16Max) {
+            self.err("Too much code to jump over.");
+        }
+
+        self.chunk.code.items[offset] = @intCast((jump >> 8) & 0xff);
+        self.chunk.code.items[offset + 1] = @intCast(jump & 0xff);
     }
 
     fn end(self: *Self) !void {

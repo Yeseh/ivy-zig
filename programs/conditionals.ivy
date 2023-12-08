@@ -1,0 +1,7 @@
+var bla = false;
+if (bla) {
+    print "true";
+}
+else {
+    print "false";
+}

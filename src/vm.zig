@@ -171,6 +171,16 @@ pub const VirtualMachine = struct {
                         return InterpreterError.RuntimeError;
                     }
                 },
+                .JUMP => {
+                    var offset = self.read_short();
+                    self.ip += offset;
+                },
+                .JUMP_IF_FALSE => {
+                    var offset = self.read_short();
+                    if (self.is_falsey(self.peek_stack(0))) {
+                        self.ip += offset;
+                    }
+                },
                 .PRINT => {
                     var value = self.stack.pop();
                     value.print();
@@ -245,6 +255,14 @@ pub const VirtualMachine = struct {
             .EQUAL => try self.stack.append(IvyType.boolean(types.eql(a, b))),
             else => return InterpreterError.RuntimeError,
         }
+    }
+
+    fn read_short(self: *Self) u16 {
+        var ptr = self.ip;
+        self.ip += 2;
+        var highBits: u16 = @as(u16, @intCast(ptr[0])) << @intCast(8);
+        var lowBits: u16 = @intCast(ptr[1]);
+        return highBits | lowBits;
     }
 
     fn read_byte(self: *Self) u8 {

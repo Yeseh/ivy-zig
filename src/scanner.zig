@@ -253,10 +253,10 @@ pub const Scanner = struct {
     // TODO: Support string interpl
     fn string(self: *Self) Token {
         while (self.peek() != '"' and !self.is_end()) {
-            // Handle escape chars
-            if (std.mem.eql(u8, self.peekN(2), "\\\"")) {
-                _ = self.adv();
-            }
+            // TODO: Handle escape chars
+            // if (std.mem.eql(u8, self.peekN(2), "\\\"")) {
+            //     _ = self.adv();
+            // }
 
             if (self.peek() == '\n') {
                 self.line += 1;
@@ -284,7 +284,7 @@ pub const Scanner = struct {
                 if (self.current_diff() > 1) {
                     break :blk switch (self.start[1]) {
                         'o' => self.check_keyword(2, 3, "nst", TokenType.CONST),
-                        'l' => self.check_keyword(2, 2, "as", TokenType.CLASS),
+                        'l' => self.check_keyword(2, 3, "ass", TokenType.CLASS),
                         else => TokenType.IDENTIFIER,
                     };
                 } else {
@@ -447,7 +447,7 @@ test "Scanner.basic" {
         var token: Token = undefined;
         for (expected) |tt| {
             token = scan.scan_token();
-            //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }
