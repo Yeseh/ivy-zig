@@ -140,7 +140,7 @@ pub const Parser = struct {
                 ParseRule{ .precedence = .NONE, .prefix = &number, .infix = null },
 
                 // AND
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .AND, .prefix = null, .infix = &_and },
                 // CLASS
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // ELSE
@@ -156,7 +156,7 @@ pub const Parser = struct {
                 // NIL
                 ParseRule{ .precedence = .NONE, .prefix = &literal, .infix = null },
                 // OR
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
+                ParseRule{ .precedence = .OR, .prefix = null, .infix = &_or },
                 // PRINT
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // RETURN
@@ -452,6 +452,26 @@ pub const Parser = struct {
             return false;
         }
         return std.mem.eql(u8, a.lex, b.lex);
+    }
+
+    fn _and(self: *Self, canAssign: bool) void {
+        _ = canAssign;
+        var endJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        self.emit_op(.POP);
+        self.parsePrecedence(.AND);
+        self.patchJump(endJump);
+    }
+
+    fn _or(self: *Self, canAssign: bool) void {
+        _ = canAssign;
+        var elseJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        var endJump = self.emitJump(@intFromEnum(OpCode.JUMP));
+
+        self.patchJump(elseJump);
+        self.emit_op(.POP);
+
+        self.parsePrecedence(.OR);
+        self.patchJump(endJump);
     }
 
     fn number(self: *Self, canAssign: bool) void {

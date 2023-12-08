@@ -153,11 +153,11 @@ pub const Scanner = struct {
     }
 
     pub fn scan_token(self: *Self) Token {
+        self.skip_whitespace();
         if (self.is_end()) {
             return self.make_token(TokenType.EOF);
         }
 
-        self.skip_whitespace();
         self.start = self.current;
 
         const c = self.adv();
@@ -447,7 +447,7 @@ test "Scanner.basic" {
         var token: Token = undefined;
         for (expected) |tt| {
             token = scan.scan_token();
-            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }
@@ -464,6 +464,22 @@ test "Scanner.basic" {
         for (expected) |tt| {
             token = scan.scan_token();
             //std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
+            if (token.type == TokenType.ERROR) {
+                std.debug.print(" '{s}'\n", .{token.lex});
+            }
+            try std.testing.expect(token.type == tt);
+        }
+    }
+    {
+        var scan = try Scanner.init(alloc, "var bla = true;\n");
+        var expected = [_]TokenType{
+            .VAR, .IDENTIFIER, .EQUAL, .TRUE, .SEMICOLON, .EOF,
+        };
+
+        var token: Token = undefined;
+        for (expected) |tt| {
+            token = scan.scan_token();
+            std.debug.print("Expected: {any}, actual: {any}\n", .{ tt, token.type });
             if (token.type == TokenType.ERROR) {
                 std.debug.print(" '{s}'\n", .{token.lex});
             }

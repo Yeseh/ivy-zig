@@ -1,7 +1,15 @@
-var bla = false;
-if (bla) {
-    print "true";
+{
+    var bla = true and true;
+    if (bla) { print "true"; }
+    else { print "false"; }
 }
-else {
-    print "false";
+{
+    var bla = true and false;
+    if (bla) { print "true"; }
+    else { print "false"; }
+}
+{
+    var bla = false or true;
+    if (bla) { print "true"; }
+    else { print "false"; }
 }
