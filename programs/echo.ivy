@@ -1,11 +1,15 @@
+print "bla";
 print 1 + 2;
 print 1 * 2;
-print "bla";
 print "blo";
 print "bla";
 
 var hello = "xdxdxd";
+const bye = "dodo";
 print hello + ", World!";
+
 hello = "bye";
+bye = "hello";
 
 print hello;
+print bye;

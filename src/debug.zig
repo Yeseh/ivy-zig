@@ -30,7 +30,14 @@ pub fn disassemble_lines(chunk: *Chunk) void {
 pub fn dump_stack(vm: *VM) void {
     for (0..vm.stack.items.len) |i| {
         var item = vm.stack.items[i];
-        std.debug.print("        | [ {s} ", .{@tagName(item)});
+        switch (item) {
+            .object => |obj| {
+                switch (obj.ty) {
+                    .String => std.debug.print("        | [ string ", .{}),
+                }
+            },
+            else => std.debug.print("        | [ {s} ", .{@tagName(item)}),
+        }
         item.print();
         std.debug.print(" ]\n", .{});
     }
@@ -49,25 +56,28 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
     }
 
     return switch (instruction) {
-        .RETURN => simple_instruction("RETURN", offset),
-        .CONSTANT => constant_instruction("CONSTANT", chunk, offset),
-        .NEGATE => simple_instruction("NEGATE", offset),
-        .ADD => simple_instruction("ADD", offset),
-        .SUBTRACT => simple_instruction("SUBTRACT", offset),
-        .DIVIDE => simple_instruction("DIVIDE", offset),
-        .MULTIPLY => simple_instruction("MULTIPLY", offset),
-        .FALSE => simple_instruction("FALSE", offset),
-        .TRUE => simple_instruction("TRUE", offset),
-        .NIL => simple_instruction("NIL", offset),
-        .NOT => simple_instruction("NOT", offset),
-        .EQUAL => simple_instruction("EQUAL", offset),
-        .LESS => simple_instruction("LESS", offset),
-        .GREATER => simple_instruction("GREATER", offset),
-        .PRINT => simple_instruction("PRINT", offset),
-        .POP => simple_instruction("POP", offset),
-        .DEFINE_GLOBAL => constant_instruction("DEFINE_GLOBAL", chunk, offset),
-        .GET_GLOBAL => constant_instruction("GET_GLOBAL", chunk, offset),
-        .SET_GLOBAL => constant_instruction("SET_GLOBAL", chunk, offset),
+        .RETURN => simpleInstruction("RETURN", offset),
+        .CONSTANT => constantInstruction("CONSTANT", chunk, offset),
+        .NEGATE => simpleInstruction("NEGATE", offset),
+        .ADD => simpleInstruction("ADD", offset),
+        .SUBTRACT => simpleInstruction("SUBTRACT", offset),
+        .DIVIDE => simpleInstruction("DIVIDE", offset),
+        .MULTIPLY => simpleInstruction("MULTIPLY", offset),
+        .FALSE => simpleInstruction("FALSE", offset),
+        .TRUE => simpleInstruction("TRUE", offset),
+        .NIL => simpleInstruction("NIL", offset),
+        .NOT => simpleInstruction("NOT", offset),
+        .EQUAL => simpleInstruction("EQUAL", offset),
+        .LESS => simpleInstruction("LESS", offset),
+        .GREATER => simpleInstruction("GREATER", offset),
+        .PRINT => simpleInstruction("PRINT", offset),
+        .POP => simpleInstruction("POP", offset),
+        .POP_N => constantInstruction("POP_N", chunk, offset),
+        .DEFINE_GLOBAL => constantInstruction("DEFINE_GLOBAL", chunk, offset),
+        .GET_LOCAL => byteInstruction("GET_LOCAL", chunk, offset),
+        .SET_LOCAL => byteInstruction("SET_LOCAL", chunk, offset),
+        .GET_GLOBAL => constantInstruction("GET_GLOBAL", chunk, offset),
+        .SET_GLOBAL => constantInstruction("SET_GLOBAL", chunk, offset),
         //else => {
         //    std.debug.print("Unknown opcode {}\n", .{instruction});
         //    return offset + 1;
@@ -75,12 +85,18 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
     };
 }
 
-pub fn simple_instruction(name: []const u8, offset: usize) usize {
+pub fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
+    var slot = chunk.get_op(offset + 1);
+    std.debug.print("{s} {d}\n", .{ name, slot });
+    return offset + 2;
+}
+
+pub fn simpleInstruction(name: []const u8, offset: usize) usize {
     std.debug.print("{s}\n", .{name});
     return offset + 1;
 }
 
-pub fn constant_instruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
+pub fn constantInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
     var constant = chunk.get_op(offset + 1);
     var ty = chunk.get_constant(constant).*;
 

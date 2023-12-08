@@ -18,18 +18,16 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     const args = try std.process.argsAlloc(allocator);
     const argc = args.len;
-    _ = argc;
 
     var vm = try VM.init(allocator);
-    try run_file(allocator, &vm, "./programs/echo.ivy");
-    // if (argc == 1) {
-    //     std.debug.print("Ivy REPL v0.0.1\n", .{});
-    //     try repl(allocator, &vm);
-    // } else if (argc == 2) {
-    //     _ = try run_direct(allocator, &vm, "Hello, World!");
-    // } else {
-    //     std.debug.print("Usage: zivy [src]\n", .{});
-    // }
+    if (argc == 1) {
+        std.debug.print("Ivy REPL v0.0.1\n", .{});
+        try repl(allocator, &vm);
+    } else if (argc == 2) {
+        try run_file(allocator, &vm, args[1]);
+    } else {
+        std.debug.print("Usage: zivy [src]\n", .{});
+    }
 
     std.process.argsFree(allocator, args);
     vm.deinit();
@@ -72,7 +70,6 @@ fn run_file(alloc: std.mem.Allocator, vm: *VM, path: []const u8) !void {
     defer alloc.free(buf);
 
     try vm.interpret(buf[0..buf.len :0]);
-    // vm.alloc.free(buf);
 }
 
 // test "Ivy.arith" {

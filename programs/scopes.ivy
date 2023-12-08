@@ -1,0 +1,16 @@
+var a = "bla";
+{
+    var a = "blo";
+    var b = "dodo";
+    print a;
+    print b;
+
+    b = a;
+    print b;
+    {
+        var c = "xd";
+        print c;
+    }
+}
+print a;
+print b;

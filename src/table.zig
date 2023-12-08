@@ -61,7 +61,6 @@ pub fn init(alloc: std.mem.Allocator, capacity: TableSize) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    std.debug.print("Table.deinit: {}\n", .{self.capacity});
     self.alloc.free(self.allocatedSlice());
     self.capacity = 0;
     self.count = 0;
@@ -76,7 +75,6 @@ pub fn addAll(self: *Self, other: *Self) !void {
 }
 
 pub fn set(self: *Self, key: *String, value: IvyType) !bool {
-    std.debug.print("Table.set: {s} {}\n", .{ key.asSlice(), value });
     var maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
     var addCount = @as(f64, @floatFromInt(self.count + 1));
     if (addCount > maxCapacity) {
@@ -199,8 +197,6 @@ fn allocatedSlice(self: *Self) []Entry {
 
 fn adjustCapacity(self: *Self, capacity: u32) !void {
     var newTable = try Table.init(self.alloc, capacity);
-    std.debug.print("adjustCapacity: {}\n", .{capacity});
-
     for (self.allocatedSlice()) |entry| {
         // Don't copy empty or tombstone entries
         if (entry != .full) continue;

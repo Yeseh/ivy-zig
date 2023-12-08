@@ -4,7 +4,7 @@ const debug = @import("debug.zig");
 const types = @import("types.zig");
 const chunk = @import("chunk.zig");
 const compiler = @import("compiler.zig");
-const Compiler = compiler.Compiler;
+const Parser = compiler.Parser;
 const Scanner = @import("scanner.zig").Scanner;
 const table = @import("table.zig");
 const garbage = @import("garbage.zig");
@@ -22,6 +22,7 @@ pub const InterpreterError = error{
     RuntimeError,
 };
 
+// TODO: Look for more efficient ways to store globals
 pub var globals: table.Table = undefined;
 pub var strings: table.Table = undefined;
 
@@ -55,12 +56,10 @@ pub const VirtualMachine = struct {
     /// Interpret a source string and return the value of the RETURN operation
     pub fn interpret(self: *Self, source: [:0]u8) !void {
         var cnk: Chunk = try Chunk.init(self.alloc);
-        // TODO: Or maybe write the chunk somewhere for a next pass?
         defer cnk.deinit();
 
-        // TODO: Do this at comptime/make these global?
         var scanner = try Scanner.init(self.alloc, source);
-        var comp = Compiler.init(self.alloc, &scanner);
+        var comp = Parser.init(self.alloc, &scanner);
         var compiled = try comp.compile(&cnk);
 
         if (!compiled) {
@@ -136,19 +135,28 @@ pub const VirtualMachine = struct {
                 .EQUAL => try self.binary_operation(instruction),
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
+                .GET_LOCAL => {
+                    var slot = self.read_byte();
+                    try self.stack.append(self.stack.items[slot]);
+                },
+                .SET_LOCAL => {
+                    var slot = self.read_byte();
+                    self.stack.items[slot] = self.peek_stack(0);
+                },
                 .DEFINE_GLOBAL => {
                     var name = self.read_constant().object_as(String);
                     var isSet = try globals.set(name, self.peek_stack(0));
                     if (!isSet) {
-                        try self.rt_error("Redefining existing variable.", .{});
+                        try self.rt_error("Redefining existing variable '{s}'.", .{name.asSlice()});
                         return InterpreterError.RuntimeError;
                     }
                     _ = self.stack.pop();
                 },
                 .GET_GLOBAL => {
-                    var global = globals.get(self.read_constant().object_as(String));
+                    var name = self.read_constant().object_as(String);
+                    var global = globals.get(name);
                     if (global == null) {
-                        try self.rt_error("Undefined variable.", .{});
+                        try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
                         return InterpreterError.RuntimeError;
                     }
                     try self.stack.append(global.?);
@@ -170,6 +178,13 @@ pub const VirtualMachine = struct {
                 },
                 .POP => {
                     _ = self.stack.pop();
+                },
+                .POP_N => {
+                    var n = self.read_byte();
+                    var i: usize = 0;
+                    while (i < n) : (i += 1) {
+                        _ = self.stack.pop();
+                    }
                 },
                 .RETURN => {
                     break;
@@ -196,10 +211,11 @@ pub const VirtualMachine = struct {
     }
 
     pub fn rt_error(self: *Self, comptime fmt: []const u8, args: anytype) !void {
-        std.debug.print(fmt, args);
         const instruction = @intFromPtr(self.ip) - @intFromPtr(self.chunk.get_op_ptr()) - 1;
         const line = try self.chunk.get_line_for_op(instruction);
-        std.debug.print("\n[line {}] in script\n", .{line});
+        std.debug.print("\n[line {}] ERR: ", .{line});
+        std.debug.print(fmt, args);
+        std.debug.print("\n", .{});
     }
 
     pub fn peek_stack(self: *Self, distance: usize) IvyType {

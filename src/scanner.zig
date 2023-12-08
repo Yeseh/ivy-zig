@@ -125,6 +125,7 @@ pub const TokenType = enum(u8) {
     THIS,
     TRUE,
     VAR,
+    CONST,
     WHILE,
 
     ERROR,
@@ -279,7 +280,17 @@ pub const Scanner = struct {
 
         var tt = switch (self.start[0]) {
             'a' => self.check_keyword(1, 2, "nd", TokenType.AND),
-            'c' => self.check_keyword(1, 4, "lass", TokenType.CLASS),
+            'c' => blk: {
+                if (self.current_diff() > 1) {
+                    break :blk switch (self.start[1]) {
+                        'o' => self.check_keyword(2, 3, "nst", TokenType.CONST),
+                        'l' => self.check_keyword(2, 2, "as", TokenType.CLASS),
+                        else => TokenType.IDENTIFIER,
+                    };
+                } else {
+                    break :blk TokenType.IDENTIFIER;
+                }
+            },
             'e' => self.check_keyword(1, 3, "lse", TokenType.ELSE),
             'i' => self.check_keyword(1, 1, "f", TokenType.IF),
             'n' => self.check_keyword(1, 2, "il", TokenType.NIL),
