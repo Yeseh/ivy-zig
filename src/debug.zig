@@ -78,6 +78,7 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
         .SET_LOCAL => byteInstruction("SET_LOCAL", chunk, offset),
         .GET_GLOBAL => constantInstruction("GET_GLOBAL", chunk, offset),
         .SET_GLOBAL => constantInstruction("SET_GLOBAL", chunk, offset),
+        .LOOP => jumpInstruction("LOOP", -1, chunk, offset),
         .JUMP => jumpInstruction("JUMP", 1, chunk, offset),
         .JUMP_IF_FALSE => jumpInstruction("JUMP_IF_FALSE", 1, chunk, offset),
         //else => {
@@ -96,7 +97,10 @@ pub fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
 pub fn jumpInstruction(name: []const u8, sign: i8, chunk: *Chunk, offset: usize) usize {
     var jump: u16 = @as(u16, @intCast(chunk.get_op(offset + 1))) << 8;
     jump |= chunk.get_op(offset + 2);
-    std.debug.print("{s} {d} -> {d}\n", .{ name, offset, offset + 2 + @as(u16, @intCast(sign)) * jump });
+    var offsetIncr = @as(i32, @intCast(offset)) + 3;
+    var signedJump = @as(i32, @intCast(jump)) * sign;
+
+    std.debug.print("{s} {d} -> {d}\n", .{ name, offset, offsetIncr + signedJump });
     return offset + 3;
 }
 

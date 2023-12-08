@@ -33,6 +33,7 @@ pub const OpCode = enum(u8) {
     DEFINE_GLOBAL,
     GET_GLOBAL,
     SET_GLOBAL,
+    LOOP,
     JUMP,
     JUMP_IF_FALSE,
     // TODO: INCREMENT and DECREMENT

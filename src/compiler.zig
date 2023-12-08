@@ -240,6 +240,10 @@ pub const Parser = struct {
             self.printStatement();
         } else if (self.match(.IF)) {
             self.ifStatement();
+        } else if (self.match(.WHILE)) {
+            self.whileStatement();
+        } else if (self.match(.FOR)) {
+            self.forStatement();
         } else if (self.match(.LBRACE)) {
             self.beginScope();
             self.block();
@@ -253,6 +257,25 @@ pub const Parser = struct {
         self.expression();
         self.eat(.SEMICOLON, "Expect ';' after value.");
         self.emit_op(.PRINT);
+    }
+
+    fn whileStatement(self: *Self) void {
+        var loopStart = self.chunk.code.items.len;
+        self.eat(.LPAREN, "Expect '(' after 'while'.");
+        self.expression();
+        self.eat(.RPAREN, "Expect ')' after condition.");
+
+        var exitJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        self.emit_op(.POP);
+        self.statement();
+        self.emitLoop(loopStart);
+
+        self.patchJump(exitJump);
+        self.emit_op(.POP);
+    }
+
+    fn forStatement(self: *Self) void {
+        _ = self;
     }
 
     fn expressionStatement(self: *Self) void {
@@ -633,6 +656,18 @@ pub const Parser = struct {
         self.emit_byte(0xff);
         self.emit_byte(0xff);
         return @intCast(self.chunk.code.items.len - 2);
+    }
+
+    fn emitLoop(self: *Self, start: usize) void {
+        self.emit_op(.LOOP);
+
+        var offset = self.chunk.code.items.len - start + 2;
+        if (offset > U16Max) {
+            self.err("Loop body too large.");
+        }
+
+        self.emit_byte(@intCast((offset >> 8) & 0xff));
+        self.emit_byte(@intCast(offset & 0xff));
     }
 
     fn patchJump(self: *Self, offset: u32) void {

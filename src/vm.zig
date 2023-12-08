@@ -181,6 +181,11 @@ pub const VirtualMachine = struct {
                         self.ip += offset;
                     }
                 },
+                // TODO: implement loop as JUMP
+                .LOOP => {
+                    var offset = self.read_short();
+                    self.ip -= offset;
+                },
                 .PRINT => {
                     var value = self.stack.pop();
                     value.print();
