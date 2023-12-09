@@ -259,6 +259,8 @@ pub const Parser = struct {
         self.emit_op(.PRINT);
     }
 
+    // TODO: Implement continue, break
+    // TODO: Implement switch
     fn whileStatement(self: *Self) void {
         var loopStart = self.chunk.code.items.len;
         self.eat(.LPAREN, "Expect '(' after 'while'.");
@@ -274,8 +276,49 @@ pub const Parser = struct {
         self.emit_op(.POP);
     }
 
+    // TODO: I don't want this type of for loop. Replace with iterator/range based for loop
     fn forStatement(self: *Self) void {
-        _ = self;
+        self.beginScope();
+        self.eat(.LPAREN, "Expect '(' after 'for'.");
+        if (self.match(.SEMICOLON)) {
+            // No initializer.
+        } else if (self.match(.VAR)) {
+            self.varDeclaration();
+        } else {
+            self.expressionStatement();
+        }
+
+        var loopStart = self.chunk.code.items.len;
+        var exitLoop: i32 = -1;
+        if (!self.match(.SEMICOLON)) {
+            self.expression();
+            self.eat(.SEMICOLON, "Expect ';' after loop condition.");
+
+            exitLoop = @intCast(self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE)));
+            self.emit_op(.POP);
+        }
+
+        if (!self.match(.RPAREN)) {
+            var bodyJump = self.emitJump(@intFromEnum(OpCode.JUMP));
+            var incrementStart = self.chunk.code.items.len;
+            self.expression();
+            self.emit_op(.POP);
+            self.eat(.RPAREN, "Expect ')' after for clauses.");
+
+            self.emitLoop(loopStart);
+            loopStart = incrementStart;
+            self.patchJump(@intCast(bodyJump));
+        }
+
+        self.statement();
+        self.emitLoop(loopStart);
+
+        if (exitLoop != -1) {
+            self.patchJump(@intCast(exitLoop));
+            self.emit_op(.POP);
+        }
+
+        self.endScope();
     }
 
     fn expressionStatement(self: *Self) void {
