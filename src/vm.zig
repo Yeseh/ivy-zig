@@ -115,7 +115,6 @@ pub const VirtualMachine = struct {
                         },
                         else => {
                             try self.rt_error("Operand must be a number.", .{});
-                            return InterpreterError.RuntimeError;
                         },
                     }
                     try self.stack.append(value);
@@ -143,7 +142,6 @@ pub const VirtualMachine = struct {
                         try self.stack.append(IvyType.number(na + nb));
                     } else {
                         try self.rt_error("Operands must be two numbers or two strings.", .{});
-                        return InterpreterError.RuntimeError;
                     }
                     break :blk;
                 },
@@ -166,7 +164,6 @@ pub const VirtualMachine = struct {
                     var isSet = try globals.set(name, self.peek_stack(0));
                     if (!isSet) {
                         try self.rt_error("Redefining existing variable '{s}'.", .{name.asSlice()});
-                        return InterpreterError.RuntimeError;
                     }
                     _ = self.stack.pop();
                 },
@@ -175,7 +172,6 @@ pub const VirtualMachine = struct {
                     var global = globals.get(name);
                     if (global == null) {
                         try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
-                        return InterpreterError.RuntimeError;
                     }
                     try self.stack.append(global.?);
                 },
@@ -186,7 +182,6 @@ pub const VirtualMachine = struct {
                         _ = globals.delete(name);
                         // NOTE: No implicit variable declaration!
                         try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
-                        return InterpreterError.RuntimeError;
                     }
                 },
                 .JUMP => {
@@ -250,6 +245,7 @@ pub const VirtualMachine = struct {
         std.debug.print("\n[line {}] ERR: ", .{line});
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
+        return InterpreterError.RuntimeError;
     }
 
     pub fn peek_stack(self: *Self, distance: usize) IvyType {

@@ -48,20 +48,34 @@ pub const FunctionType = enum { function, script };
 pub const Compiler = struct {
     const Self = @This();
 
+    enclosing: ?*Self,
     function: *Function,
     type: FunctionType,
     locals: [LOCAL_COUNT]Local,
     localCount: i32,
     scopeDepth: i32,
 
-    pub fn init(alloc: std.mem.Allocator, ty: FunctionType) !Compiler {
-        return Compiler{
+    pub fn init(alloc: std.mem.Allocator, ty: FunctionType, name: ?*Token, current: ?*Compiler) !Compiler {
+        var compiler = Compiler{
             .locals = undefined,
             .localCount = 0,
             .scopeDepth = 0,
+            .enclosing = current,
             .type = ty,
             .function = try Function.create(alloc),
         };
+
+        if (ty != .script and name != null) {
+            var fnName = try String.copyInterned(alloc, name.?.lex, &vm.strings);
+            compiler.function.name = fnName;
+        }
+
+        var local = &compiler.locals[@intCast(compiler.localCount)];
+        local.depth = 0;
+        local.name.lex = "";
+        compiler.localCount += 1;
+
+        return compiler;
     }
 };
 
@@ -92,7 +106,7 @@ pub const Parser = struct {
             .scan = undefined,
             .alloc = alloc,
             .had_error = false,
-            .currentCompiler = try Compiler.init(alloc, .script),
+            .currentCompiler = try Compiler.init(alloc, .script, null, null),
             .panic = false,
             .rules = [TOKEN_COUNT]ParseRule{
                 // LPAREN
@@ -184,10 +198,6 @@ pub const Parser = struct {
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
             },
         };
-        var local = &parser.currentCompiler.locals[@intCast(parser.currentCompiler.localCount)];
-        local.depth = 0;
-        local.name.lex = "";
-        parser.currentCompiler.localCount += 1;
 
         return parser;
     }
@@ -206,8 +216,8 @@ pub const Parser = struct {
             self.declaration();
         }
 
-        var function = try self.end();
-        var retVal = if (self.had_error) null else function;
+        var fun = try self.end();
+        var retVal = if (self.had_error) null else fun;
         return retVal;
     }
 
@@ -216,6 +226,8 @@ pub const Parser = struct {
             self.varDeclaration();
         } else if (self.match(.CONST)) {
             self.constDeclaration();
+        } else if (self.match(.FN)) {
+            self.fnDeclaration();
         } else {
             self.statement();
         }
@@ -364,6 +376,50 @@ pub const Parser = struct {
         self.eat(.RBRACE, "Expect '}' after block.");
     }
 
+    fn function(self: *Self, ty: FunctionType) void {
+        var fnComp = Compiler.init(self.alloc, ty, &self.prev, &self.currentCompiler) catch {
+            self.err("Failed to initialize compiler.");
+            return;
+        };
+        self.currentCompiler = fnComp;
+        self.beginScope();
+
+        self.eat(.LPAREN, "Expect '(' after function name.");
+        if (!self.check(.RPAREN)) {
+            while (true) {
+                self.currentCompiler.function.arity += 1;
+                if (self.currentCompiler.function.arity > U8Max) {
+                    self.err("Cannot have more than 255 parameters.");
+                }
+
+                var paramConstant = self.parseVariable("Expect parameter name.");
+                self.defineVariable(paramConstant);
+
+                if (!self.match(.COMMA)) {
+                    break;
+                }
+            }
+        }
+        self.eat(.RPAREN, "Expect ')' after parameters.");
+        self.eat(.LBRACE, "Expect '{' before function body.");
+        self.block();
+
+        var fun = self.end() catch {
+            self.err("Failed to end function compilation.");
+            return;
+        };
+        var funType = IvyType.function(fun);
+        var constant = self.makeConstant(funType);
+        self.emit_ops(.CONSTANT, @enumFromInt(constant));
+    }
+
+    fn fnDeclaration(self: *Self) void {
+        var global = self.parseVariable("Expect function identifier.");
+        self.markInitialized();
+        self.function(.function);
+        self.defineVariable(global);
+    }
+
     pub fn beginScope(self: *Self) void {
         self.currentCompiler.scopeDepth += 1;
     }
@@ -488,6 +544,9 @@ pub const Parser = struct {
     }
 
     fn markInitialized(self: *Self) void {
+        if (self.currentCompiler.scopeDepth == 0) {
+            return;
+        }
         var idx = self.currentCompiler.localCount - 1;
         var sd = self.currentCompiler.scopeDepth;
         var local = &self.currentCompiler.locals[@intCast(idx)];
@@ -740,15 +799,19 @@ pub const Parser = struct {
 
     fn end(self: *Self) !*Function {
         self.emit_return();
-        var function = self.currentCompiler.function;
+        var fun = self.currentCompiler.function;
         if (self.had_error) {
-            if (function.name == null) {
+            if (fun.name == null) {
                 try debug.disassemble_chunk(self.currentChunk(), "<script>");
             } else {
-                try debug.disassemble_chunk(self.currentChunk(), function.name.?.asSlice());
+                try debug.disassemble_chunk(self.currentChunk(), fun.name.?.asSlice());
             }
         }
-        return function;
+
+        if (self.currentCompiler.enclosing != null) {
+            self.currentCompiler = self.currentCompiler.enclosing.?.*;
+        }
+        return fun;
     }
 
     fn synchronize(self: *Self) void {

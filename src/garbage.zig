@@ -27,19 +27,23 @@ pub fn free(alloc: std.mem.Allocator) void {
             .String => {
                 var str = obj.?.as(String);
                 if (common.DEBUG_PRINT_GC) {
-                    std.debug.print("GC: String '{s}' {}\n", .{ str.asSlice(), str._obj });
+                    std.debug.print("GC: String '{s}'\n", .{str.asSlice()});
                 }
                 str.deinit(alloc);
                 count += 1;
             },
-            .Function => {
-                var func = obj.?.as(types.Function);
-                if (common.DEBUG_PRINT_GC) {
-                    std.debug.print("GC: Function {}\n", .{func._obj});
-                }
-                func.deinit(alloc);
-                count += 1;
-            },
+            // .Function => {
+            //     var func = obj.?.as(types.Function);
+            //     if (common.DEBUG_PRINT_GC) {
+            //         if (func.name != null)
+            //             std.debug.print("GC: Function <{s}>\n", .{func.name.?.asSlice()})
+            //         else
+            //             std.debug.print("GC: Script\n", .{});
+            //     }
+            //     func.deinit(alloc);
+            //     count += 1;
+            // },
+            else => {},
         }
         obj = next;
     }
