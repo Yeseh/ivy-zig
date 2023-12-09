@@ -16,10 +16,19 @@ const OpCode = common.OpCode;
 const Object = types.Object;
 const String = types.String;
 
-pub const STACK_MAX = 256;
+pub const FRAMES_MAX = 64;
+pub const STACK_MAX = FRAMES_MAX * 256;
 pub const InterpreterError = error{
     CompiletimeError,
     RuntimeError,
+};
+
+pub const CallFrame = struct {
+    const Self = @This();
+
+    function: *types.Function,
+    ip: [*]u8,
+    slots: [*]IvyType,
 };
 
 // TODO: Look for more efficient ways to store globals
@@ -31,6 +40,9 @@ pub const VirtualMachine = struct {
 
     ip: [*]u8,
     chunk: *Chunk,
+    frames: [FRAMES_MAX]CallFrame,
+    frameCount: i32,
+    // TODO: Refactor to fixed-length slice?
     stack: std.ArrayList(IvyType),
     alloc: std.mem.Allocator,
 
@@ -41,6 +53,8 @@ pub const VirtualMachine = struct {
         return VirtualMachine{
             .chunk = undefined,
             .ip = undefined,
+            .frames = undefined,
+            .frameCount = 0,
             .alloc = alloc,
             .stack = stack,
         };
@@ -53,40 +67,44 @@ pub const VirtualMachine = struct {
         globals.deinit();
     }
 
-    /// Interpret a source string and return the value of the RETURN operation
+    /// Interpret a source buffer
     pub fn interpret(self: *Self, source: [:0]u8) !void {
-        var cnk: Chunk = try Chunk.init(self.alloc);
-        defer cnk.deinit();
+        var comp = try Parser.init(self.alloc);
+        var compiled = try comp.compile(source);
 
-        var scanner = try Scanner.init(self.alloc, source);
-        var comp = Parser.init(self.alloc, &scanner);
-        var compiled = try comp.compile(&cnk);
-
-        if (!compiled) {
+        if (compiled == null) {
             return InterpreterError.CompiletimeError;
         }
 
-        self.chunk = &cnk;
-        self.ip = self.chunk.get_op_ptr();
+        try self.stack.append(IvyType.function(compiled.?));
+        var frame = &self.frames[0];
+        self.frameCount += 1;
+
+        frame.function = compiled.?;
+        frame.ip = frame.function.chunk.get_op_ptr();
+        // TODO: Pwetty unsafe hewe, watch for resizes of the stack!
+        frame.slots = self.stack.items.ptr;
+
         try self.run();
     }
 
     pub fn run(self: *Self) !void {
         while (true) {
+            var frame = &self.frames[@intCast(self.frameCount - 1)];
             if (common.DEBUG_PRINT_CODE) {
                 debug.dump_stack(self);
-                const offset = @intFromPtr(self.ip) - @intFromPtr(self.chunk.get_op_ptr());
-                _ = debug.disassemble_instruction(self.chunk, offset) catch |err| {
+                const offset = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr());
+                _ = debug.disassemble_instruction(&frame.function.chunk, offset) catch |err| {
                     std.debug.print("{any}\n", .{err});
                     return InterpreterError.RuntimeError;
                 };
             }
 
-            const byte = self.read_byte();
+            const byte = self.read_byte(frame);
             const instruction: OpCode = @enumFromInt(byte);
 
             switch (instruction) {
-                .CONSTANT => try self.stack.append(self.read_constant()),
+                .CONSTANT => try self.stack.append(self.read_constant(frame)),
                 .NEGATE => b: {
                     const value = self.peek_stack(0);
                     switch (value) {
@@ -136,15 +154,15 @@ pub const VirtualMachine = struct {
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
                 .GET_LOCAL => {
-                    var slot = self.read_byte();
-                    try self.stack.append(self.stack.items[slot]);
+                    var slot = self.read_byte(frame);
+                    try self.stack.append(frame.slots[slot]);
                 },
                 .SET_LOCAL => {
-                    var slot = self.read_byte();
-                    self.stack.items[slot] = self.peek_stack(0);
+                    var slot = self.read_byte(frame);
+                    frame.slots[slot] = self.peek_stack(0);
                 },
                 .DEFINE_GLOBAL => {
-                    var name = self.read_constant().object_as(String);
+                    var name = self.read_constant(frame).object_as(String);
                     var isSet = try globals.set(name, self.peek_stack(0));
                     if (!isSet) {
                         try self.rt_error("Redefining existing variable '{s}'.", .{name.asSlice()});
@@ -153,7 +171,7 @@ pub const VirtualMachine = struct {
                     _ = self.stack.pop();
                 },
                 .GET_GLOBAL => {
-                    var name = self.read_constant().object_as(String);
+                    var name = self.read_constant(frame).object_as(String);
                     var global = globals.get(name);
                     if (global == null) {
                         try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
@@ -162,7 +180,7 @@ pub const VirtualMachine = struct {
                     try self.stack.append(global.?);
                 },
                 .SET_GLOBAL => {
-                    var name = self.read_constant().object_as(String);
+                    var name = self.read_constant(frame).object_as(String);
                     var set = try globals.set(name, self.peek_stack(0));
                     if (set) {
                         _ = globals.delete(name);
@@ -172,19 +190,19 @@ pub const VirtualMachine = struct {
                     }
                 },
                 .JUMP => {
-                    var offset = self.read_short();
-                    self.ip += offset;
+                    var offset = self.read_short(frame);
+                    frame.ip += offset;
                 },
                 .JUMP_IF_FALSE => {
-                    var offset = self.read_short();
+                    var offset = self.read_short(frame);
                     if (self.is_falsey(self.peek_stack(0))) {
-                        self.ip += offset;
+                        frame.ip += offset;
                     }
                 },
                 // TODO: implement loop as JUMP
                 .LOOP => {
-                    var offset = self.read_short();
-                    self.ip -= offset;
+                    var offset = self.read_short(frame);
+                    frame.ip -= offset;
                 },
                 .PRINT => {
                     var value = self.stack.pop();
@@ -195,7 +213,7 @@ pub const VirtualMachine = struct {
                     _ = self.stack.pop();
                 },
                 .POP_N => {
-                    var n = self.read_byte();
+                    var n = self.read_byte(frame);
                     var i: usize = 0;
                     while (i < n) : (i += 1) {
                         _ = self.stack.pop();
@@ -226,8 +244,9 @@ pub const VirtualMachine = struct {
     }
 
     pub fn rt_error(self: *Self, comptime fmt: []const u8, args: anytype) !void {
-        const instruction = @intFromPtr(self.ip) - @intFromPtr(self.chunk.get_op_ptr()) - 1;
-        const line = try self.chunk.get_line_for_op(instruction);
+        var frame = &self.frames[@intCast(self.frameCount - 1)];
+        const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr()) - 1;
+        const line = try frame.function.chunk.get_line_for_op(instruction);
         std.debug.print("\n[line {}] ERR: ", .{line});
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
@@ -262,22 +281,24 @@ pub const VirtualMachine = struct {
         }
     }
 
-    fn read_short(self: *Self) u16 {
-        var ptr = self.ip;
-        self.ip += 2;
+    fn read_short(self: *Self, frame: *CallFrame) u16 {
+        _ = self;
+        var ptr = frame.*.ip;
+        frame.ip += 2;
         var highBits: u16 = @as(u16, @intCast(ptr[0])) << @intCast(8);
         var lowBits: u16 = @intCast(ptr[1]);
         return highBits | lowBits;
     }
 
-    fn read_byte(self: *Self) u8 {
-        const instruction = self.ip[0];
-        self.ip += 1;
+    fn read_byte(self: *Self, frame: *CallFrame) u8 {
+        _ = self;
+        const instruction = frame.ip[0];
+        frame.ip += 1;
         return instruction;
     }
 
-    fn read_constant(self: *Self) IvyType {
-        return self.chunk.constants.items[self.read_byte()];
+    fn read_constant(self: *Self, frame: *CallFrame) IvyType {
+        return frame.function.chunk.constants.items[self.read_byte(frame)];
     }
 };
 

@@ -115,7 +115,7 @@ pub const TokenType = enum(u8) {
     ELSE,
     FALSE,
     FOR,
-    FUN,
+    FN,
     IF,
     NIL,
     OR,
@@ -303,9 +303,9 @@ pub const Scanner = struct {
             'f' => blk: {
                 if (self.current_diff() > 1) {
                     break :blk switch (self.start[1]) {
+                        'n' => TokenType.FN,
                         'a' => self.check_keyword(2, 3, "lse", TokenType.FALSE),
                         'o' => self.check_keyword(2, 1, "r", TokenType.FOR),
-                        'u' => self.check_keyword(2, 1, "n", TokenType.FUN),
                         else => TokenType.IDENTIFIER,
                     };
                 } else {
@@ -441,7 +441,7 @@ test "Scanner.basic" {
     {
         var scan = try Scanner.init(alloc, "and class else false for fun if nil or print return super this true var while blabla");
         var expected = [_]TokenType{
-            .AND, .CLASS, .ELSE, .FALSE, .FOR, .FUN, .IF, .NIL, .OR, .PRINT, .RETURN, .SUPER, .THIS, .TRUE, .VAR, .WHILE, .IDENTIFIER, .EOF,
+            .AND, .CLASS, .ELSE, .FALSE, .FOR, .FN, .IF, .NIL, .OR, .PRINT, .RETURN, .SUPER, .THIS, .TRUE, .VAR, .WHILE, .IDENTIFIER, .EOF,
         };
 
         var token: Token = undefined;

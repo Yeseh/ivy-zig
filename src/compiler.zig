@@ -11,6 +11,7 @@ const debug = @import("debug.zig");
 const IvyType = types.IvyType;
 const Object = types.Object;
 const String = types.String;
+const Function = types.Function;
 const Scanner = scanner.Scanner;
 const TokenType = scanner.TokenType;
 const Token = scanner.Token;
@@ -40,20 +41,26 @@ pub const Local = struct {
     depth: i32,
 };
 
+pub const FunctionType = enum { function, script };
+
 // TODO: Uses simulated stack, can we use the real stack?
 // TODO: Expand to support more than 256 locals
 pub const Compiler = struct {
     const Self = @This();
 
+    function: *Function,
+    type: FunctionType,
     locals: [LOCAL_COUNT]Local,
     localCount: i32,
     scopeDepth: i32,
 
-    pub fn init() Compiler {
+    pub fn init(alloc: std.mem.Allocator, ty: FunctionType) !Compiler {
         return Compiler{
             .locals = undefined,
             .localCount = 0,
             .scopeDepth = 0,
+            .type = ty,
+            .function = try Function.create(alloc),
         };
     }
 };
@@ -73,21 +80,19 @@ pub const Parser = struct {
     prev: Token,
     scan: *Scanner,
     alloc: std.mem.Allocator,
-    chunk: *Chunk,
     had_error: bool,
     panic: bool,
     currentCompiler: Compiler,
     rules: [TOKEN_COUNT]ParseRule,
 
-    pub fn init(alloc: std.mem.Allocator, scan: *Scanner) Parser {
-        return Parser{
+    pub fn init(alloc: std.mem.Allocator) !Parser {
+        var parser = Parser{
             .cur = undefined,
             .prev = undefined,
-            .scan = scan,
+            .scan = undefined,
             .alloc = alloc,
-            .chunk = undefined,
             .had_error = false,
-            .currentCompiler = Compiler.init(),
+            .currentCompiler = try Compiler.init(alloc, .script),
             .panic = false,
             .rules = [TOKEN_COUNT]ParseRule{
                 // LPAREN
@@ -179,6 +184,12 @@ pub const Parser = struct {
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
             },
         };
+        var local = &parser.currentCompiler.locals[@intCast(parser.currentCompiler.localCount)];
+        local.depth = 0;
+        local.name.lex = "";
+        parser.currentCompiler.localCount += 1;
+
+        return parser;
     }
 
     fn get_rule(self: *Self, tt: TokenType) *ParseRule {
@@ -186,18 +197,18 @@ pub const Parser = struct {
         return rule;
     }
 
-    pub fn compile(self: *Self, chunk: *Chunk) !bool {
-        self.chunk = chunk;
+    pub fn compile(self: *Self, source: [:0]u8) !?*Function {
+        var scn = try Scanner.init(self.alloc, source);
+        self.scan = &scn;
 
         self.advance();
         while (!self.match(.EOF)) {
             self.declaration();
         }
-        self.end() catch {
-            self.err("Out of memory.");
-        };
 
-        return !self.had_error;
+        var function = try self.end();
+        var retVal = if (self.had_error) null else function;
+        return retVal;
     }
 
     fn declaration(self: *Self) void {
@@ -262,7 +273,7 @@ pub const Parser = struct {
     // TODO: Implement continue, break
     // TODO: Implement switch
     fn whileStatement(self: *Self) void {
-        var loopStart = self.chunk.code.items.len;
+        var loopStart = self.currentChunk().code.items.len;
         self.eat(.LPAREN, "Expect '(' after 'while'.");
         self.expression();
         self.eat(.RPAREN, "Expect ')' after condition.");
@@ -288,7 +299,7 @@ pub const Parser = struct {
             self.expressionStatement();
         }
 
-        var loopStart = self.chunk.code.items.len;
+        var loopStart = self.currentChunk().code.items.len;
         var exitLoop: i32 = -1;
         if (!self.match(.SEMICOLON)) {
             self.expression();
@@ -300,7 +311,7 @@ pub const Parser = struct {
 
         if (!self.match(.RPAREN)) {
             var bodyJump = self.emitJump(@intFromEnum(OpCode.JUMP));
-            var incrementStart = self.chunk.code.items.len;
+            var incrementStart = self.currentChunk().code.items.len;
             self.expression();
             self.emit_op(.POP);
             self.eat(.RPAREN, "Expect ')' after for clauses.");
@@ -614,7 +625,7 @@ pub const Parser = struct {
     }
 
     fn makeConstant(self: *Self, value: IvyType) u8 {
-        var constant = self.chunk.add_constant(value) catch {
+        var constant = self.currentChunk().add_constant(value) catch {
             self.err("Out of memory.");
             return 0;
         };
@@ -660,6 +671,10 @@ pub const Parser = struct {
         }
     }
 
+    fn currentChunk(self: *Self) *Chunk {
+        return &self.currentCompiler.function.chunk;
+    }
+
     fn emit_op(self: *Self, op: OpCode) void {
         self.emit_byte(@intFromEnum(op));
     }
@@ -673,7 +688,7 @@ pub const Parser = struct {
     }
 
     fn emit_byte(self: *Self, byte: u8) void {
-        self.chunk.write(byte, self.prev.line) catch {
+        self.currentChunk().write(byte, self.prev.line) catch {
             self.err("Out of memory.");
         };
     }
@@ -698,13 +713,13 @@ pub const Parser = struct {
         self.emit_byte(op);
         self.emit_byte(0xff);
         self.emit_byte(0xff);
-        return @intCast(self.chunk.code.items.len - 2);
+        return @intCast(self.currentChunk().code.items.len - 2);
     }
 
     fn emitLoop(self: *Self, start: usize) void {
         self.emit_op(.LOOP);
 
-        var offset = self.chunk.code.items.len - start + 2;
+        var offset = self.currentChunk().code.items.len - start + 2;
         if (offset > U16Max) {
             self.err("Loop body too large.");
         }
@@ -714,23 +729,26 @@ pub const Parser = struct {
     }
 
     fn patchJump(self: *Self, offset: u32) void {
-        var jump = self.chunk.code.items.len - offset - 2;
+        var jump = self.currentChunk().code.items.len - offset - 2;
         if (jump > U16Max) {
             self.err("Too much code to jump over.");
         }
 
-        self.chunk.code.items[offset] = @intCast((jump >> 8) & 0xff);
-        self.chunk.code.items[offset + 1] = @intCast(jump & 0xff);
+        self.currentChunk().code.items[offset] = @intCast((jump >> 8) & 0xff);
+        self.currentChunk().code.items[offset + 1] = @intCast(jump & 0xff);
     }
 
-    fn end(self: *Self) !void {
-        if (common.DEBUG_PRINT_CODE) {
-            if (self.had_error) {
-                return;
-            }
-            // try debug.disassemble_chunk(self.chunk, "code");
-        }
+    fn end(self: *Self) !*Function {
         self.emit_return();
+        var function = self.currentCompiler.function;
+        if (self.had_error) {
+            if (function.name == null) {
+                try debug.disassemble_chunk(self.currentChunk(), "<script>");
+            } else {
+                try debug.disassemble_chunk(self.currentChunk(), function.name.?.asSlice());
+            }
+        }
+        return function;
     }
 
     fn synchronize(self: *Self) void {
@@ -742,7 +760,7 @@ pub const Parser = struct {
             }
 
             switch (self.cur.type) {
-                .CLASS, .FUN, .VAR, .FOR, .IF, .WHILE, .PRINT, .RETURN => return,
+                .CLASS, .FN, .VAR, .FOR, .IF, .WHILE, .PRINT, .RETURN => return,
                 else => {},
             }
 

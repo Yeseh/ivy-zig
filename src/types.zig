@@ -5,9 +5,11 @@ const garbage = @import("garbage.zig");
 const ArrayList = std.ArrayList;
 const RuntimeErrror = common.RuntimeError;
 const Table = common.Table;
+const Chunk = common.Chunk;
 
 pub const ObjectType = enum(u8) {
     String,
+    Function,
 };
 
 /// This is a generic object type. It is used to represent all objects in Ivy.
@@ -21,6 +23,32 @@ pub const Object = extern struct {
 
     pub fn as(self: *Self, comptime T: type) *T {
         return @ptrCast(@alignCast(self));
+    }
+};
+
+pub const Function = struct {
+    const Self = @This();
+
+    _obj: Object,
+    arity: i8,
+    chunk: Chunk,
+    name: ?*String,
+
+    pub fn create(alloc: std.mem.Allocator) !*Function {
+        var fun = try alloc.create(Self);
+        fun._obj.ty = ObjectType.Function;
+        fun.arity = 0;
+        fun.name = null;
+        fun.chunk = try Chunk.init(alloc);
+        garbage.mark(@ptrCast(@alignCast(fun)));
+        return fun;
+    }
+
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        self.chunk.deinit();
+        alloc.destroy(self);
+        self.arity = 0;
+        self.* = undefined;
     }
 };
 
@@ -229,6 +257,10 @@ pub const IvyType = union(enum) {
         return Self{ .object = @ptrCast(@alignCast(str)) };
     }
 
+    pub fn function(fun: *Function) Self {
+        return Self{ .object = @ptrCast(@alignCast(fun)) };
+    }
+
     // TODO: Use std.fmt instead of debug
     pub fn print(self: *const Self) void {
         switch (self.*) {
@@ -238,6 +270,14 @@ pub const IvyType = union(enum) {
             .object => {
                 switch (self.object.ty) {
                     .String => std.debug.print("\"{s}\"", .{self.object_as(String).asSlice()}),
+                    .Function => {
+                        var name = self.object_as(Function).name;
+                        if (name == null) {
+                            std.debug.print("<script>", .{});
+                            return;
+                        }
+                        std.debug.print("<fn {s}>", .{name.?.asSlice()});
+                    },
                 }
             },
         }
@@ -263,6 +303,8 @@ pub const IvyType = union(enum) {
                     var copy = try String.copy(alloc, std.mem.sliceTo(str.allocatedSlice(), 0));
                     break :blk IvyType.string(copy);
                 },
+                // Clone function ?
+                else => unreachable,
             },
         };
     }
@@ -313,6 +355,7 @@ pub fn eql(a: IvyType, b: IvyType) bool {
                 .String => {
                     return a.object_as(String) == b.object_as(String);
                 },
+                else => unreachable,
             }
         },
     };

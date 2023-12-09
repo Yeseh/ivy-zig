@@ -1,6 +1,8 @@
 print "While loop";
 var i = 0;
 while (i < 5) {
+    var b = "bla";
+    print b;
     print i;
     i = i + 1;
 }
@@ -10,7 +12,7 @@ for (var i = 5; i < 10; i = i+1) {
     print i;
 }
 
-print "Inf";
-for (;;) {
-    print "Hahahaha";
-}
+// print "Inf";
+// for (;;) {
+//     print "Hahahaha";
+// }
