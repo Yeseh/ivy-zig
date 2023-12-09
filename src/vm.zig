@@ -77,20 +77,14 @@ pub const VirtualMachine = struct {
         }
 
         try self.stack.append(IvyType.function(compiled.?));
-        var frame = &self.frames[0];
-        self.frameCount += 1;
-
-        frame.function = compiled.?;
-        frame.ip = frame.function.chunk.get_op_ptr();
-        // TODO: Pwetty unsafe hewe, watch for resizes of the stack!
-        frame.slots = self.stack.items.ptr;
+        _ = try self.call(compiled.?, 0);
 
         try self.run();
     }
 
     pub fn run(self: *Self) !void {
+        var frame = &self.frames[@intCast(self.frameCount - 1)];
         while (true) {
-            var frame = &self.frames[@intCast(self.frameCount - 1)];
             if (common.DEBUG_PRINT_CODE) {
                 debug.dump_stack(self);
                 const offset = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr());
@@ -207,6 +201,14 @@ pub const VirtualMachine = struct {
                 .POP => {
                     _ = self.stack.pop();
                 },
+                .CALL => {
+                    var argCount = self.read_byte(frame);
+                    if (!(try self.callValue(self.peek_stack(argCount), argCount))) {
+                        return InterpreterError.RuntimeError;
+                    }
+                    frame = &self.frames[@intCast(self.frameCount - 1)];
+                    break;
+                },
                 .POP_N => {
                     var n = self.read_byte(frame);
                     var i: usize = 0;
@@ -238,6 +240,7 @@ pub const VirtualMachine = struct {
         return value == .nil or (value.is_bool() and !value.as_bool());
     }
 
+    // TODO catch chunk error
     pub fn rt_error(self: *Self, comptime fmt: []const u8, args: anytype) !void {
         var frame = &self.frames[@intCast(self.frameCount - 1)];
         const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr()) - 1;
@@ -250,6 +253,36 @@ pub const VirtualMachine = struct {
 
     pub fn peek_stack(self: *Self, distance: usize) IvyType {
         return self.stack.items[self.stack.items.len - 1 - distance];
+    }
+
+    fn callValue(self: *Self, callee: IvyType, argCount: u8) !bool {
+        if (callee.is_obj()) {
+            switch (callee.object.ty) {
+                .Function => {
+                    return try self.call(callee.object_as(types.Function), argCount);
+                },
+                else => {},
+            }
+        }
+        try self.rt_error("Can only call functions and classes", .{});
+        return false;
+    }
+
+    fn call(self: *Self, fun: *types.Function, argc: u8) !bool {
+        if (argc != fun.arity) {
+            try self.rt_error("Expected {} arguments but got {}.", .{ fun.arity, argc });
+            return false;
+        }
+        if (self.frameCount == FRAMES_MAX) {
+            try self.rt_error("Stack overflow.", .{});
+            return false;
+        }
+        var frame = &self.frames[@intCast(self.frameCount)];
+        self.frameCount += 1;
+        frame.function = fun;
+        frame.ip = fun.chunk.get_op_ptr();
+        frame.slots = self.stack.items.ptr - argc - 1;
+        return true;
     }
 
     fn binary_operation(self: *Self, op: OpCode) !void {

@@ -36,6 +36,7 @@ pub const OpCode = enum(u8) {
     LOOP,
     JUMP,
     JUMP_IF_FALSE,
+    CALL,
     // TODO: INCREMENT and DECREMENT
     // INCREMENT,
 };

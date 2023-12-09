@@ -82,6 +82,7 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
         .LOOP => jumpInstruction("LOOP", -1, chunk, offset),
         .JUMP => jumpInstruction("JUMP", 1, chunk, offset),
         .JUMP_IF_FALSE => jumpInstruction("JUMP_IF_FALSE", 1, chunk, offset),
+        .CALL => byteInstruction("CALL", chunk, offset),
         //else => {
         //    std.debug.print("Unknown opcode {}\n", .{instruction});
         //    return offset + 1;

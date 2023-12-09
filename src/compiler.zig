@@ -110,7 +110,7 @@ pub const Parser = struct {
             .panic = false,
             .rules = [TOKEN_COUNT]ParseRule{
                 // LPAREN
-                ParseRule{ .precedence = .NONE, .prefix = &grouping, .infix = null },
+                ParseRule{ .precedence = .NONE, .prefix = &grouping, .infix = &call },
                 // RPAREN
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // LBRACE
@@ -543,6 +543,23 @@ pub const Parser = struct {
         self.emit_bytes(@intFromEnum(OpCode.DEFINE_GLOBAL), global);
     }
 
+    fn argumentList(self: *Self) u8 {
+        var argCount: u8 = 0;
+        if (!self.check(.RPAREN)) {
+            self.expression();
+            argCount += 1;
+            while (!self.match(.COMMA)) {
+                self.expression();
+                if (argCount == U8Max) {
+                    self.err("Cannot have more than 255 arguments.");
+                }
+                argCount += 1;
+            }
+        }
+        self.eat(.RPAREN, "Expect ')' after arguments.");
+        return argCount;
+    }
+
     fn markInitialized(self: *Self) void {
         if (self.currentCompiler.scopeDepth == 0) {
             return;
@@ -657,6 +674,12 @@ pub const Parser = struct {
 
             else => unreachable,
         }
+    }
+
+    fn call(self: *Self, canAssign: bool) void {
+        _ = canAssign;
+        var argCount = self.argumentList();
+        self.emit_ops(.CALL, @enumFromInt(argCount));
     }
 
     fn unary(self: *Self, canAssign: bool) void {

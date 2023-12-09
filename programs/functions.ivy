@@ -1,5 +1,14 @@
 fn a() {
-    fn b() {}
+    var bla = "bla";
+    print bla;
+    fn b() {
+        var blo = "blo";
+        print blo;
+    }
 }
+
+print a;
+print b;
+a();
 
 //fn c() {}
