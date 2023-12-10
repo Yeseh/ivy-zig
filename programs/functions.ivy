@@ -1,14 +1,8 @@
-fn a() {
-    var bla = "bla";
-    print bla;
-    fn b() {
-        var blo = "blo";
-        print blo;
-    }
+var a = "bla";
+
+fn b() {
+    var c = "blo";
+    print c;
 }
 
-print a;
-print b;
-a();
-
-//fn c() {}
+b();

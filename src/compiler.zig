@@ -56,6 +56,7 @@ pub const Compiler = struct {
     scopeDepth: i32,
 
     pub fn init(alloc: std.mem.Allocator, ty: FunctionType, name: ?*Token, current: ?*Compiler) !Compiler {
+        std.debug.print("creating compiler\n", .{});
         var compiler = Compiler{
             .locals = undefined,
             .localCount = 0,
@@ -96,7 +97,7 @@ pub const Parser = struct {
     alloc: std.mem.Allocator,
     had_error: bool,
     panic: bool,
-    currentCompiler: Compiler,
+    currentCompiler: ?Compiler,
     rules: [TOKEN_COUNT]ParseRule,
 
     pub fn init(alloc: std.mem.Allocator) !Parser {
@@ -110,7 +111,7 @@ pub const Parser = struct {
             .panic = false,
             .rules = [TOKEN_COUNT]ParseRule{
                 // LPAREN
-                ParseRule{ .precedence = .NONE, .prefix = &grouping, .infix = &call },
+                ParseRule{ .precedence = .CALL, .prefix = &grouping, .infix = &call },
                 // RPAREN
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // LBRACE
@@ -377,18 +378,18 @@ pub const Parser = struct {
     }
 
     fn function(self: *Self, ty: FunctionType) void {
-        var fnComp = Compiler.init(self.alloc, ty, &self.prev, &self.currentCompiler) catch {
+        var fnComp = Compiler.init(self.alloc, ty, &self.prev, &self.currentCompiler.?) catch {
             self.err("Failed to initialize compiler.");
             return;
         };
-        self.currentCompiler = fnComp;
+        self.currentCompiler.? = fnComp;
         self.beginScope();
 
         self.eat(.LPAREN, "Expect '(' after function name.");
         if (!self.check(.RPAREN)) {
             while (true) {
-                self.currentCompiler.function.arity += 1;
-                if (self.currentCompiler.function.arity > U8Max) {
+                self.currentCompiler.?.function.arity += 1;
+                if (self.currentCompiler.?.function.arity > U8Max) {
                     self.err("Cannot have more than 255 parameters.");
                 }
 
@@ -421,16 +422,16 @@ pub const Parser = struct {
     }
 
     pub fn beginScope(self: *Self) void {
-        self.currentCompiler.scopeDepth += 1;
+        self.currentCompiler.?.scopeDepth += 1;
     }
 
     pub fn endScope(self: *Self) void {
-        self.currentCompiler.scopeDepth -= 1;
+        self.currentCompiler.?.scopeDepth -= 1;
         var toPop: u32 = 0;
 
-        while (self.currentCompiler.localCount > 0 and self.currentCompiler.locals[@intCast(self.currentCompiler.localCount - 1)].depth > self.currentCompiler.scopeDepth) {
+        while (self.currentCompiler.?.localCount > 0 and self.currentCompiler.?.locals[@intCast(self.currentCompiler.?.localCount - 1)].depth > self.currentCompiler.?.scopeDepth) {
             toPop += 1;
-            self.currentCompiler.localCount -= 1;
+            self.currentCompiler.?.localCount -= 1;
         }
 
         while (toPop > 0) {
@@ -445,15 +446,15 @@ pub const Parser = struct {
     }
 
     pub fn addLocal(self: *Self, name: Token) void {
-        if (self.currentCompiler.localCount == LOCAL_COUNT) {
+        if (self.currentCompiler.?.localCount == LOCAL_COUNT) {
             self.err("Too many local variables in function.");
             return;
         }
-        var local = &self.currentCompiler.locals[@intCast(self.currentCompiler.localCount)];
+        var local = &self.currentCompiler.?.locals[@intCast(self.currentCompiler.?.localCount)];
         local.name = name;
         local.depth = -1;
 
-        self.currentCompiler.localCount += 1;
+        self.currentCompiler.?.localCount += 1;
     }
 
     fn expression(self: *Self) void {
@@ -509,9 +510,9 @@ pub const Parser = struct {
     }
 
     fn resolveLocal(self: *Self, name: *Token) i32 {
-        var i = self.currentCompiler.localCount - 1;
+        var i = self.currentCompiler.?.localCount - 1;
         while (i >= 0) : (i -= 1) {
-            var local = &self.currentCompiler.locals[@intCast(i)];
+            var local = &self.currentCompiler.?.locals[@intCast(i)];
             if (identifiersEql(name, &local.name)) {
                 if (local.depth == -1) {
                     self.err("Cannot read local variable in its own initializer.");
@@ -527,7 +528,7 @@ pub const Parser = struct {
     fn parseVariable(self: *Self, msg: []const u8) u8 {
         self.eat(.IDENTIFIER, msg);
         self.declareVariable();
-        if (self.currentCompiler.scopeDepth > 0) {
+        if (self.currentCompiler.?.scopeDepth > 0) {
             return 0;
         }
 
@@ -535,7 +536,7 @@ pub const Parser = struct {
     }
 
     fn defineVariable(self: *Self, global: u8) void {
-        if (self.currentCompiler.scopeDepth > 0) {
+        if (self.currentCompiler.?.scopeDepth > 0) {
             self.markInitialized();
             return;
         }
@@ -561,25 +562,25 @@ pub const Parser = struct {
     }
 
     fn markInitialized(self: *Self) void {
-        if (self.currentCompiler.scopeDepth == 0) {
+        if (self.currentCompiler.?.scopeDepth == 0) {
             return;
         }
-        var idx = self.currentCompiler.localCount - 1;
-        var sd = self.currentCompiler.scopeDepth;
-        var local = &self.currentCompiler.locals[@intCast(idx)];
+        var idx = self.currentCompiler.?.localCount - 1;
+        var sd = self.currentCompiler.?.scopeDepth;
+        var local = &self.currentCompiler.?.locals[@intCast(idx)];
         local.depth = sd;
     }
 
     fn declareVariable(self: *Self) void {
-        if (self.currentCompiler.scopeDepth == 0) {
+        if (self.currentCompiler.?.scopeDepth == 0) {
             return;
         }
 
         var name = &self.prev;
-        var idx = self.currentCompiler.localCount - 1;
+        var idx = self.currentCompiler.?.localCount - 1;
         while (idx >= 0) : (idx -= 1) {
-            var local = &self.currentCompiler.locals[@intCast(idx)];
-            if (local.depth != -1 and local.depth < self.currentCompiler.scopeDepth) {
+            var local = &self.currentCompiler.?.locals[@intCast(idx)];
+            if (local.depth != -1 and local.depth < self.currentCompiler.?.scopeDepth) {
                 break;
             }
 
@@ -754,7 +755,7 @@ pub const Parser = struct {
     }
 
     fn currentChunk(self: *Self) *Chunk {
-        return &self.currentCompiler.function.chunk;
+        return &self.currentCompiler.?.function.chunk;
     }
 
     fn emit_op(self: *Self, op: OpCode) void {
@@ -784,6 +785,7 @@ pub const Parser = struct {
     }
 
     fn emit_return(self: *Self) void {
+        self.emit_op(.NIL);
         self.emit_op(.RETURN);
     }
 
@@ -822,7 +824,7 @@ pub const Parser = struct {
 
     fn end(self: *Self) !*Function {
         self.emit_return();
-        var fun = self.currentCompiler.function;
+        var fun = self.currentCompiler.?.function;
         if (self.had_error) {
             if (fun.name == null) {
                 try debug.disassemble_chunk(self.currentChunk(), "<script>");
@@ -831,8 +833,10 @@ pub const Parser = struct {
             }
         }
 
-        if (self.currentCompiler.enclosing != null) {
-            self.currentCompiler = self.currentCompiler.enclosing.?.*;
+        if (self.currentCompiler == null or self.currentCompiler.?.enclosing == null) {
+            self.currentCompiler = null;
+        } else {
+            self.currentCompiler = self.currentCompiler.?.enclosing.?.*;
         }
         return fun;
     }
