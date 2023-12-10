@@ -577,8 +577,9 @@ pub const Parser = struct {
         }
 
         var name = &self.prev;
-        var idx = self.currentCompiler.?.localCount - 1;
-        while (idx >= 0) : (idx -= 1) {
+        var idx = self.currentCompiler.?.localCount;
+        while (idx > 0) {
+            idx -= 1;
             var local = &self.currentCompiler.?.locals[@intCast(idx)];
             if (local.depth != -1 and local.depth < self.currentCompiler.?.scopeDepth) {
                 break;

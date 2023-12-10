@@ -10,6 +10,7 @@ const String = types.String;
 // TODO: Reimplement pointer api
 // TODO: Benchmark handle vs pointer based api during optimization
 // TODO: Try to use the 'encoding' strategy (DoD) for entry cache optimalization
+// TODO: research chained scatter table with Brent’s variation [3] (from LUA paper)
 
 pub const Table = @This();
 const Self = @This();
