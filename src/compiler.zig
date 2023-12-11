@@ -751,7 +751,7 @@ pub const Parser = struct {
                 break;
             }
 
-            self.err_at_cur(self.cur.lex);
+            self.err_at_cur(.unexpected_eof);
         }
     }
 
@@ -834,9 +834,14 @@ pub const Parser = struct {
             }
         }
 
+        std.debug.print("ending function\n", .{});
         if (self.currentCompiler == null or self.currentCompiler.?.enclosing == null) {
+            std.debug.print("Compiled all functions...\n", .{});
             self.currentCompiler = null;
         } else {
+            var enclosing = self.currentCompiler.?.enclosing.?;
+            var name = if (enclosing.function.name != null) enclosing.function.name.?.asSlice() else "<script>";
+            std.debug.print("Entering enclosing function: {s}\n", .{name});
             self.currentCompiler = self.currentCompiler.?.enclosing.?.*;
         }
         return fun;
@@ -881,7 +886,7 @@ pub const Parser = struct {
         }
 
         std.debug.print(": ", .{});
-        CompileError.render(e);
+        CompileError.printErr(e);
         self.had_error = true;
     }
 };
@@ -897,6 +902,7 @@ pub const CompileError = struct {
         expect_expression,
         expect_variable_name,
         expect_eq_after_variable_name,
+        expect_parameter_name,
         expect_semicolon_after_variable_declaration,
         expect_semicolon_after_value,
         expect_semicolon_after_loop_condition,
@@ -908,6 +914,7 @@ pub const CompileError = struct {
         expect_rparen_after_expression,
         expect_rparen_after_condition,
         expect_rparen_after_arguments,
+        expect_rparen_after_parameters,
         expect_rparen_after_for_clauses,
         expect_rbrace_after_block,
         expect_lbrace_before_function_body,
@@ -917,7 +924,9 @@ pub const CompileError = struct {
         // Others
         too_many_local_variables_in_function,
         too_many_parameters,
+        too_many_arguments,
         too_many_constants_in_one_chunk,
+        unexpected_eof,
         invalid_assignment_target,
         cannot_read_local_variable_in_initializer,
         loop_body_too_large,
@@ -925,7 +934,7 @@ pub const CompileError = struct {
         duplicate_variable_declaration,
     };
 
-    pub fn render(err: CompileError.Tag) void {
+    pub fn printErr(err: CompileError.Tag) void {
         switch (err) {
             .failed_to_initialize_compiler => std.debug.print("Failed to initialize compiler.\n", .{}),
             .failed_to_end_function_compilation => std.debug.print("Failed to end function compilation.\n", .{}),
@@ -942,18 +951,26 @@ pub const CompileError = struct {
             .expect_lparen_after_if => std.debug.print("Expect '(' after 'if'.\n", .{}),
             .expect_lparen_after_function_name => std.debug.print("Expect '(' after function name.\n", .{}),
             .expect_lparen_after_parameters => std.debug.print("Expect '(' after parameters.\n", .{}),
-            .expect_lparen_after_expression => std.debug.print("Expect '(' after expression.\n", .{}),
             .expect_rparen_after_condition => std.debug.print("Expect ')' after condition.\n", .{}),
             .expect_rparen_after_arguments => std.debug.print("Expect ')' after arguments.", .{}),
             .expect_rparen_after_expression => std.debug.print("Expect ')' after expression.\n", .{}),
+            .expect_rparen_after_parameters => std.debug.print("Expect ')' after parameters.\n", .{}),
             .expect_rparen_after_for_clauses => std.debug.print("Expect ')' after for clauses.\n", .{}),
-            .expect_rbrace_after_block => std.debug.print("Expect '}' after block.\n", .{}),
-            .expect_lbrace_before_function_body => std.debug.print("Expect '{' before function body.\n", .{}),
+            .expect_rbrace_after_block => std.debug.print("Expect closing brace after block.\n", .{}),
+            .expect_lbrace_before_function_body => std.debug.print("Expect opening brace before function body.\n", .{}),
             .expect_identifier => std.debug.print("Expect identifier.\n", .{}),
             .expect_function_identifier => std.debug.print("Expect function identifier.\n", .{}),
             .too_many_local_variables_in_function => std.debug.print("Too many local variables in function.\n", .{}),
             .too_many_parameters => std.debug.print("Can't have more than 255 parameters.\n", .{}),
             .too_many_arguments => std.debug.print("Can't have more than 255 arguments.\n", .{}),
+            .invalid_assignment_target => std.debug.print("Invalid assignment target.\n", .{}),
+            .too_many_constants_in_one_chunk => std.debug.print("Too many constants in one chunk.\n", .{}),
+            // TODO: improve
+            .unexpected_eof => std.debug.print(" unexpeced EOF\n", .{}),
+            .cannot_read_local_variable_in_initializer => std.debug.print("Can't read local variable in its own initializer.\n", .{}),
+            .loop_body_too_large => std.debug.print("Loop body too large.\n", .{}),
+            .jump_too_large => std.debug.print("Jump offset too large.\n", .{}),
+            .duplicate_variable_declaration => std.debug.print("Duplicate variable declaration.\n", .{}),
         }
     }
 };
