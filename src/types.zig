@@ -50,6 +50,10 @@ pub const Function = struct {
         self.arity = 0;
         self.* = undefined;
     }
+
+    pub fn getName(self: *Self) []const u8 {
+        return if (self.name != null) self.name.?.asSlice() else "<script>";
+    }
 };
 
 /// Raw string type. This is a wrapper around a null-terminated slice of bytes.

@@ -14,6 +14,8 @@ const ChunkError = chunk.ChunkError;
 const IvyType = common.IvyType;
 const OpCode = common.OpCode;
 const Object = types.Object;
+const Compiler = compiler.Compiler;
+const FunctionType = compiler.FunctionType;
 const String = types.String;
 
 pub const FRAMES_MAX = 64;
@@ -22,6 +24,9 @@ pub const InterpreterError = error{
     CompiletimeError,
     RuntimeError,
 };
+
+var stack: [STACK_MAX]IvyType = undefined;
+var frames: [FRAMES_MAX]CallFrame = undefined;
 
 pub const CallFrame = struct {
     const Self = @This();
@@ -39,9 +44,9 @@ pub const VirtualMachine = struct {
     const Self = @This();
 
     ip: [*]u8,
-    frames: [FRAMES_MAX]CallFrame,
+    frames: []CallFrame,
     frameCount: i32,
-    stack: [STACK_MAX]IvyType,
+    stack: []IvyType,
     stackTop: [*]IvyType,
     alloc: std.mem.Allocator,
 
@@ -50,12 +55,13 @@ pub const VirtualMachine = struct {
         strings = try table.init(alloc, 8);
         var vm = VirtualMachine{
             .ip = undefined,
-            .frames = undefined,
+            .frames = frames[0..],
             .frameCount = 0,
             .alloc = alloc,
-            .stack = undefined,
+            .stack = stack[0..],
             .stackTop = undefined,
         };
+        vm.stackTop = vm.stack.ptr;
         vm.resetStack();
         return vm;
     }
@@ -69,15 +75,18 @@ pub const VirtualMachine = struct {
     /// Interpret a source buffer
     pub fn interpret(self: *Self, source: [:0]u8) !void {
         std.debug.print("\n{s}\n", .{source});
-        var comp = try Parser.init(self.alloc);
-        var compiled = try comp.compile(source);
+        var comp: Compiler = undefined;
+        try compiler.initCompiler(&comp, self.alloc, FunctionType.script, null);
+
+        var parser = try Parser.init(self.alloc);
+        var compiled = try parser.compile(source);
 
         if (compiled == null) {
             std.debug.print("\nCompilation failed\n", .{});
             return InterpreterError.CompiletimeError;
         }
 
-        std.debug.print("compiled: {}", .{compiled.?});
+        std.debug.print("compiled: {}\n", .{compiled.?});
         try self.pushStack(IvyType.function(compiled.?));
         _ = try self.call(compiled.?, 0);
 
@@ -85,7 +94,7 @@ pub const VirtualMachine = struct {
     }
 
     pub fn run(self: *Self) !void {
-        var frame = &self.frames[0];
+        var frame = &self.frames[@intCast(self.frameCount - 1)];
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
                 //debug.dump_stack(self);
@@ -219,6 +228,7 @@ pub const VirtualMachine = struct {
                     }
                 },
                 .RETURN => {
+                    std.debug.print("return\n", .{});
                     var result = self.popStack();
                     self.frameCount -= 1;
                     if (self.frameCount == 0) {
@@ -256,8 +266,9 @@ pub const VirtualMachine = struct {
         std.debug.print(fmt, args);
         std.debug.print("\n", .{});
 
-        var i: usize = @intCast(self.frameCount - 1);
-        while (i >= 0) : (i -= 1) {
+        var i: usize = @intCast(self.frameCount);
+        while (i > 0) {
+            i -= 1;
             var frame = &self.frames[i];
 
             const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr()) - 1;
@@ -276,12 +287,8 @@ pub const VirtualMachine = struct {
         return InterpreterError.RuntimeError;
     }
 
-    pub fn stackPtr(self: *Self) [*]IvyType {
-        return self.stack[0..self.stack.len].ptr;
-    }
-
     pub fn resetStack(self: *Self) void {
-        self.stackTop = self.stackPtr();
+        self.stackTop = self.stack.ptr;
     }
 
     pub fn pushStack(self: *Self, value: IvyType) !void {
@@ -312,11 +319,7 @@ pub const VirtualMachine = struct {
     }
 
     fn call(self: *Self, fun: *types.Function, argc: u8) !bool {
-        if (fun.name == null) {
-            std.debug.print("call <script>\n", .{});
-        } else {
-            std.debug.print("call {s}\n", .{fun.name.?.asSlice()});
-        }
+        std.debug.print("call {s}\n", .{fun.getName()});
         if (argc != fun.arity) {
             try self.rt_error("Expected {} arguments but got {}.", .{ fun.arity, argc });
             return false;
@@ -329,7 +332,7 @@ pub const VirtualMachine = struct {
         self.frameCount += 1;
         frame.function = fun;
         frame.ip = fun.chunk.get_op_ptr();
-        frame.slots = self.stackPtr() - argc - 1;
+        frame.slots = self.stack.ptr - argc - 1;
         return true;
     }
 
