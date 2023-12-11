@@ -237,24 +237,24 @@ pub const Parser = struct {
     }
 
     fn varDeclaration(self: *Self) void {
-        var global = self.parseVariable("Expect variable name.");
+        var global = self.parseVariable(.expect_variable_name);
 
         if (self.match(.EQUAL)) {
             self.expression();
         } else {
             self.emit_op(.NIL);
         }
-        self.eat(.SEMICOLON, "Expect ';' after variable declaration.");
+        self.eat(.SEMICOLON, .expect_semicolon_after_variable_declaration);
 
         self.defineVariable(global);
     }
 
     fn constDeclaration(self: *Self) void {
-        var global = self.parseVariable("Expect variable name.");
+        var global = self.parseVariable(.expect_variable_name);
 
-        self.eat(.EQUAL, "Expect '=' after variable name.");
+        self.eat(.EQUAL, .expect_eq_after_variable_name);
         self.expression();
-        self.eat(.SEMICOLON, "Expect ';' after variable declaration.");
+        self.eat(.SEMICOLON, .expect_semicolon_after_variable_declaration);
 
         self.defineVariable(global);
     }
@@ -279,7 +279,7 @@ pub const Parser = struct {
 
     fn printStatement(self: *Self) void {
         self.expression();
-        self.eat(.SEMICOLON, "Expect ';' after value.");
+        self.eat(.SEMICOLON, .expect_semicolon_after_value);
         self.emit_op(.PRINT);
     }
 
@@ -287,9 +287,9 @@ pub const Parser = struct {
     // TODO: Implement switch
     fn whileStatement(self: *Self) void {
         var loopStart = self.currentChunk().code.items.len;
-        self.eat(.LPAREN, "Expect '(' after 'while'.");
+        self.eat(.LPAREN, .expect_lparen_after_while);
         self.expression();
-        self.eat(.RPAREN, "Expect ')' after condition.");
+        self.eat(.RPAREN, .expect_rparen_after_condition);
 
         var exitJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
         self.emit_op(.POP);
@@ -303,7 +303,7 @@ pub const Parser = struct {
     // TODO: I don't want this type of for loop. Replace with iterator/range based for loop
     fn forStatement(self: *Self) void {
         self.beginScope();
-        self.eat(.LPAREN, "Expect '(' after 'for'.");
+        self.eat(.LPAREN, .expect_lparen_after_for);
         if (self.match(.SEMICOLON)) {
             // No initializer.
         } else if (self.match(.VAR)) {
@@ -316,7 +316,7 @@ pub const Parser = struct {
         var exitLoop: i32 = -1;
         if (!self.match(.SEMICOLON)) {
             self.expression();
-            self.eat(.SEMICOLON, "Expect ';' after loop condition.");
+            self.eat(.SEMICOLON, .expect_semicolon_after_loop_condition);
 
             exitLoop = @intCast(self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE)));
             self.emit_op(.POP);
@@ -327,7 +327,7 @@ pub const Parser = struct {
             var incrementStart = self.currentChunk().code.items.len;
             self.expression();
             self.emit_op(.POP);
-            self.eat(.RPAREN, "Expect ')' after for clauses.");
+            self.eat(.RPAREN, .expect_rparen_after_for_clauses);
 
             self.emitLoop(loopStart);
             loopStart = incrementStart;
@@ -347,14 +347,14 @@ pub const Parser = struct {
 
     fn expressionStatement(self: *Self) void {
         self.expression();
-        self.eat(.SEMICOLON, "Expect ';' after value.");
+        self.eat(.SEMICOLON, .expect_semicolon_after_value);
         self.emit_op(.POP);
     }
 
     fn ifStatement(self: *Self) void {
-        self.eat(.LPAREN, "Expect '(' after 'if'.");
+        self.eat(.LPAREN, .expect_lparen_after_if);
         self.expression();
-        self.eat(.RPAREN, "Expect ')' after condition.");
+        self.eat(.RPAREN, .expect_rparen_after_condition);
 
         var thenJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
         self.emit_op(.POP);
@@ -374,26 +374,26 @@ pub const Parser = struct {
             self.declaration();
         }
 
-        self.eat(.RBRACE, "Expect '}' after block.");
+        self.eat(.RBRACE, .expect_rbrace_after_block);
     }
 
     fn function(self: *Self, ty: FunctionType) void {
         var fnComp = Compiler.init(self.alloc, ty, &self.prev, &self.currentCompiler.?) catch {
-            self.err("Failed to initialize compiler.");
+            self.err(.failed_to_initialize_compiler);
             return;
         };
         self.currentCompiler.? = fnComp;
         self.beginScope();
 
-        self.eat(.LPAREN, "Expect '(' after function name.");
+        self.eat(.LPAREN, .expect_lparen_after_function_name);
         if (!self.check(.RPAREN)) {
             while (true) {
                 self.currentCompiler.?.function.arity += 1;
                 if (self.currentCompiler.?.function.arity > U8Max) {
-                    self.err("Cannot have more than 255 parameters.");
+                    self.err(.too_many_parameters);
                 }
 
-                var paramConstant = self.parseVariable("Expect parameter name.");
+                var paramConstant = self.parseVariable(.expect_parameter_name);
                 self.defineVariable(paramConstant);
 
                 if (!self.match(.COMMA)) {
@@ -401,12 +401,12 @@ pub const Parser = struct {
                 }
             }
         }
-        self.eat(.RPAREN, "Expect ')' after parameters.");
-        self.eat(.LBRACE, "Expect '{' before function body.");
+        self.eat(.RPAREN, .expect_rparen_after_parameters);
+        self.eat(.LBRACE, .expect_lbrace_before_function_body);
         self.block();
 
         var fun = self.end() catch {
-            self.err("Failed to end function compilation.");
+            self.err(.failed_to_end_function_compilation);
             return;
         };
         var funType = IvyType.function(fun);
@@ -415,7 +415,7 @@ pub const Parser = struct {
     }
 
     fn fnDeclaration(self: *Self) void {
-        var global = self.parseVariable("Expect function identifier.");
+        var global = self.parseVariable(.expect_function_identifier);
         self.markInitialized();
         self.function(.function);
         self.defineVariable(global);
@@ -447,7 +447,7 @@ pub const Parser = struct {
 
     pub fn addLocal(self: *Self, name: Token) void {
         if (self.currentCompiler.?.localCount == LOCAL_COUNT) {
-            self.err("Too many local variables in function.");
+            self.err(.too_many_local_variables_in_function);
             return;
         }
         var local = &self.currentCompiler.?.locals[@intCast(self.currentCompiler.?.localCount)];
@@ -465,7 +465,7 @@ pub const Parser = struct {
         self.advance();
 
         var prefix = self.get_rule(self.prev.type).prefix orelse {
-            self.err("Expect expression.");
+            self.err(.expect_expression);
             return;
         };
 
@@ -481,7 +481,7 @@ pub const Parser = struct {
         }
 
         if (!canAssign and self.match(.EQUAL)) {
-            self.err("Invalid assignment target.");
+            self.err(.invalid_assignment_target);
         }
     }
 
@@ -515,7 +515,7 @@ pub const Parser = struct {
             var local = &self.currentCompiler.?.locals[@intCast(i)];
             if (identifiersEql(name, &local.name)) {
                 if (local.depth == -1) {
-                    self.err("Cannot read local variable in its own initializer.");
+                    self.err(.cannot_read_local_variable_in_initializer);
                 }
                 var index: i32 = @intCast(i);
                 return index;
@@ -525,8 +525,8 @@ pub const Parser = struct {
         return -1;
     }
 
-    fn parseVariable(self: *Self, msg: []const u8) u8 {
-        self.eat(.IDENTIFIER, msg);
+    fn parseVariable(self: *Self, e: CompileError.Tag) u8 {
+        self.eat(.IDENTIFIER, e);
         self.declareVariable();
         if (self.currentCompiler.?.scopeDepth > 0) {
             return 0;
@@ -552,12 +552,12 @@ pub const Parser = struct {
             while (!self.match(.COMMA)) {
                 self.expression();
                 if (argCount == U8Max) {
-                    self.err("Cannot have more than 255 arguments.");
+                    self.err(.too_many_arguments);
                 }
                 argCount += 1;
             }
         }
-        self.eat(.RPAREN, "Expect ')' after arguments.");
+        self.eat(.RPAREN, .expect_rparen_after_arguments);
         return argCount;
     }
 
@@ -586,7 +586,7 @@ pub const Parser = struct {
             }
 
             if (identifiersEql(name, &local.name)) {
-                self.err("Already variable with this name in this scope.");
+                self.err(.duplicate_variable_declaration);
             }
         }
 
@@ -595,7 +595,7 @@ pub const Parser = struct {
 
     fn identifierConstant(self: *Self, name: *Token) u8 {
         var str = String.copyInterned(self.alloc, name.*.lex, &vm.strings) catch {
-            self.err_at_cur("Out of memory.");
+            self.err_at_cur(.out_of_memory);
             return 0;
         };
         var obj = IvyType.string(str);
@@ -642,7 +642,7 @@ pub const Parser = struct {
     fn grouping(self: *Self, canAssign: bool) void {
         _ = canAssign;
         self.expression();
-        self.eat(.RPAREN, "Expect ')' after expression.");
+        self.eat(.RPAREN, .expect_rparen_after_expression);
     }
 
     fn literal(self: *Self, canAssign: bool) void {
@@ -701,7 +701,7 @@ pub const Parser = struct {
         const chars = self.prev.lex[1 .. self.prev.lex.len - 1];
 
         const str = String.copyInterned(self.alloc, chars, &vm.strings) catch {
-            self.err_at_cur("Out of memory.");
+            self.err_at_cur(.out_of_memory);
             return;
         };
         const obj = IvyType.string(str);
@@ -710,12 +710,12 @@ pub const Parser = struct {
 
     fn makeConstant(self: *Self, value: IvyType) u8 {
         var constant = self.currentChunk().add_constant(value) catch {
-            self.err("Out of memory.");
+            self.err(.out_of_memory);
             return 0;
         };
         // TODO: Support for more than 256 constants, see 17.4.1
         if (constant > U8Max) {
-            self.err("Too many constants in one chunk.");
+            self.err(.too_many_constants_in_one_chunk);
             return 0;
         }
         return @as(u8, @intCast(constant));
@@ -734,13 +734,13 @@ pub const Parser = struct {
         return true;
     }
 
-    fn eat(self: *Self, tt: TokenType, msg: []const u8) void {
+    fn eat(self: *Self, tt: TokenType, e: CompileError.Tag) void {
         if (self.cur.type == tt) {
             self.advance();
             return;
         }
 
-        self.err_at_cur(msg);
+        self.err_at_cur(e);
     }
 
     fn advance(self: *Self) void {
@@ -773,7 +773,7 @@ pub const Parser = struct {
 
     fn emit_byte(self: *Self, byte: u8) void {
         self.currentChunk().write(byte, self.prev.line) catch {
-            self.err("Out of memory.");
+            self.err(.too_many_constants_in_one_chunk);
         };
     }
 
@@ -806,7 +806,7 @@ pub const Parser = struct {
 
         var offset = self.currentChunk().code.items.len - start + 2;
         if (offset > U16Max) {
-            self.err("Loop body too large.");
+            self.err(.loop_body_too_large);
         }
 
         self.emit_byte(@intCast((offset >> 8) & 0xff));
@@ -816,7 +816,7 @@ pub const Parser = struct {
     fn patchJump(self: *Self, offset: u32) void {
         var jump = self.currentChunk().code.items.len - offset - 2;
         if (jump > U16Max) {
-            self.err("Too much code to jump over.");
+            self.err(.jump_too_large);
         }
 
         self.currentChunk().code.items[offset] = @intCast((jump >> 8) & 0xff);
@@ -859,15 +859,15 @@ pub const Parser = struct {
         }
     }
 
-    fn err_at_cur(self: *Self, msg: []const u8) void {
-        self.err_at(&self.cur, msg);
+    fn err_at_cur(self: *Self, e: CompileError.Tag) void {
+        self.err_at(&self.cur, e);
     }
 
-    fn err(self: *Self, msg: []const u8) void {
-        self.err_at(&self.prev, msg);
+    fn err(self: *Self, e: CompileError.Tag) void {
+        self.err_at(&self.prev, e);
     }
 
-    fn err_at(self: *Self, at: *Token, msg: []const u8) void {
+    fn err_at(self: *Self, at: *Token, e: CompileError.Tag) void {
         if (self.panic) {
             return;
         }
@@ -880,149 +880,80 @@ pub const Parser = struct {
             else => std.debug.print(" at '{s}'", .{at.lex}),
         }
 
-        std.debug.print(": {s}\n", .{msg});
+        std.debug.print(": ", .{});
+        CompileError.render(e);
         self.had_error = true;
     }
 };
 
-test "Compiler.strings" {
-    const alloc = std.testing.allocator;
-    const om = @import("garbage.zig");
-    const tst = @import("test/testing.zig");
-    {
-        var source = "\"hello world\"";
-        var cnk: Chunk = try Chunk.init(alloc);
-        vm.strings = try table.Table.init(alloc, 8);
-        defer cnk.deinit();
-        defer om.free(alloc);
-        defer vm.strings.deinit();
+pub const CompileError = struct {
+    pub const Tag = enum {
+        // General errors
+        failed_to_initialize_compiler,
+        failed_to_end_function_compilation,
+        out_of_memory,
 
-        var scan = try Scanner.init(alloc, source);
-        var comp = Parser.init(alloc, &scan);
-        var compiled = try comp.compile(&cnk);
+        // Parse errors
+        expect_expression,
+        expect_variable_name,
+        expect_eq_after_variable_name,
+        expect_semicolon_after_variable_declaration,
+        expect_semicolon_after_value,
+        expect_semicolon_after_loop_condition,
+        expect_lparen_after_while,
+        expect_lparen_after_for,
+        expect_lparen_after_if,
+        expect_lparen_after_function_name,
+        expect_lparen_after_parameters,
+        expect_rparen_after_expression,
+        expect_rparen_after_condition,
+        expect_rparen_after_arguments,
+        expect_rparen_after_for_clauses,
+        expect_rbrace_after_block,
+        expect_lbrace_before_function_body,
+        expect_identifier,
+        expect_function_identifier,
 
-        var expected = [_]OpCode{ .CONSTANT, .RETURN };
+        // Others
+        too_many_local_variables_in_function,
+        too_many_parameters,
+        too_many_constants_in_one_chunk,
+        invalid_assignment_target,
+        cannot_read_local_variable_in_initializer,
+        loop_body_too_large,
+        jump_too_large,
+        duplicate_variable_declaration,
+    };
 
-        try std.testing.expect(compiled);
-        try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assertCompiled(&expected, cnk.code);
+    pub fn render(err: CompileError.Tag) void {
+        switch (err) {
+            .failed_to_initialize_compiler => std.debug.print("Failed to initialize compiler.\n", .{}),
+            .failed_to_end_function_compilation => std.debug.print("Failed to end function compilation.\n", .{}),
+            .out_of_memory => std.debug.print("Out of memory.\n", .{}),
+            .expect_expression => std.debug.print("Expect expression.\n", .{}),
+            .expect_variable_name => std.debug.print("Expect variable name.\n", .{}),
+            .expect_parameter_name => std.debug.print("Expect parameter name.\n", .{}),
+            .expect_eq_after_variable_name => std.debug.print("Expect '=' after variable name.\n", .{}),
+            .expect_semicolon_after_variable_declaration => std.debug.print("Expect ';' after variable declaration.\n", .{}),
+            .expect_semicolon_after_value => std.debug.print("Expect ';' after value.\n", .{}),
+            .expect_semicolon_after_loop_condition => std.debug.print("Expect ';' after loop condition.\n", .{}),
+            .expect_lparen_after_while => std.debug.print("Expect '(' after 'while'.\n", .{}),
+            .expect_lparen_after_for => std.debug.print("Expect '(' after 'for'.\n", .{}),
+            .expect_lparen_after_if => std.debug.print("Expect '(' after 'if'.\n", .{}),
+            .expect_lparen_after_function_name => std.debug.print("Expect '(' after function name.\n", .{}),
+            .expect_lparen_after_parameters => std.debug.print("Expect '(' after parameters.\n", .{}),
+            .expect_lparen_after_expression => std.debug.print("Expect '(' after expression.\n", .{}),
+            .expect_rparen_after_condition => std.debug.print("Expect ')' after condition.\n", .{}),
+            .expect_rparen_after_arguments => std.debug.print("Expect ')' after arguments.", .{}),
+            .expect_rparen_after_expression => std.debug.print("Expect ')' after expression.\n", .{}),
+            .expect_rparen_after_for_clauses => std.debug.print("Expect ')' after for clauses.\n", .{}),
+            .expect_rbrace_after_block => std.debug.print("Expect '}' after block.\n", .{}),
+            .expect_lbrace_before_function_body => std.debug.print("Expect '{' before function body.\n", .{}),
+            .expect_identifier => std.debug.print("Expect identifier.\n", .{}),
+            .expect_function_identifier => std.debug.print("Expect function identifier.\n", .{}),
+            .too_many_local_variables_in_function => std.debug.print("Too many local variables in function.\n", .{}),
+            .too_many_parameters => std.debug.print("Can't have more than 255 parameters.\n", .{}),
+            .too_many_arguments => std.debug.print("Can't have more than 255 arguments.\n", .{}),
+        }
     }
-}
-
-test "Compiler.basic" {
-    const tst = @import("test/testing.zig");
-
-    const alloc = std.testing.allocator;
-    {
-        var source = "1.2 + 3 - -4";
-        var cnk: Chunk = try Chunk.init(alloc);
-        defer cnk.deinit();
-
-        var scan = try Scanner.init(alloc, source);
-        var comp = Parser.init(alloc, &scan);
-        var compiled = try comp.compile(&cnk);
-
-        var expected = [_]OpCode{ .CONSTANT, .CONSTANT, .ADD, .CONSTANT, .NEGATE, .SUBTRACT, .RETURN };
-
-        try std.testing.expect(compiled);
-        try std.testing.expect(comp.chunk.code.items.len == 10);
-
-        try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assertCompiled(&expected, cnk.code);
-    }
-}
-
-test "Compiler.literals" {
-    const tst = @import("test/testing.zig");
-
-    const alloc = std.testing.allocator;
-    {
-        var source = "true";
-        var cnk: Chunk = try Chunk.init(alloc);
-        defer cnk.deinit();
-
-        var scan = try Scanner.init(alloc, source);
-        var comp = Parser.init(alloc, &scan);
-        var compiled = try comp.compile(&cnk);
-
-        var expected = [_]OpCode{ .TRUE, .RETURN };
-
-        try std.testing.expect(compiled);
-        try std.testing.expect(comp.chunk.code.items.len == 2);
-
-        try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assertCompiled(&expected, cnk.code);
-    }
-}
-
-test "Compiler.grouping" {
-    const tst = @import("test/testing.zig");
-
-    const alloc = std.testing.allocator;
-    {
-        var source = "(-1 + (2 * 4)) * 3 - -4";
-        var cnk: Chunk = try Chunk.init(alloc);
-        defer cnk.deinit();
-
-        var scan = try Scanner.init(alloc, source);
-        var comp = Parser.init(alloc, &scan);
-        var compiled = try comp.compile(&cnk);
-
-        var expected = [_]OpCode{
-            .CONSTANT,
-            .NEGATE,
-            .CONSTANT,
-            .CONSTANT,
-            .MULTIPLY,
-            .ADD,
-            .CONSTANT,
-            .MULTIPLY,
-            .CONSTANT,
-            .NEGATE,
-            .SUBTRACT,
-            .RETURN,
-        };
-
-        try std.testing.expect(compiled);
-        try std.testing.expect(comp.chunk.code.items.len == 17);
-
-        try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assertCompiled(&expected, cnk.code);
-    }
-}
-
-test "Compiler.comparison" {
-    const tst = @import("test/testing.zig");
-
-    const alloc = std.testing.allocator;
-    {
-        var source = "!(5-4 > 3*2 == !nil)";
-        var cnk: Chunk = try Chunk.init(alloc);
-        defer cnk.deinit();
-
-        var scan = try Scanner.init(alloc, source);
-        var comp = Parser.init(alloc, &scan);
-        var compiled = try comp.compile(&cnk);
-
-        var expected = [_]OpCode{
-            .CONSTANT,
-            .CONSTANT,
-            .SUBTRACT,
-            .CONSTANT,
-            .CONSTANT,
-            .MULTIPLY,
-            .GREATER,
-            .NIL,
-            .NOT,
-            .EQUAL,
-            .NOT,
-            .RETURN,
-        };
-
-        try std.testing.expect(compiled);
-        try std.testing.expect(comp.chunk.code.items.len == 16);
-
-        try debug.disassemble_chunk(&cnk, "Test");
-        try tst.assertCompiled(&expected, cnk.code);
-    }
-}
+};
