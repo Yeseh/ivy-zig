@@ -4,6 +4,7 @@ print a;
 fn b() {
     var c = "blo";
     print c;
+    return c;
 }
 
-b();
+print b();

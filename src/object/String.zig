@@ -55,7 +55,6 @@ pub const String = struct {
         // Ensure we have a null-terminated slice
         var buf = try alloc.allocSentinel(u8, slice.len, 0);
         @memcpy(buf, slice.ptr);
-        std.debug.print("copy_string: {s}\n", .{buf});
         // We can use fromOwnedSliceSentinel here because we used the same allocator to copy the input chars
         return String.init(alloc, buf);
     }

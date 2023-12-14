@@ -46,7 +46,6 @@ pub const FunctionType = enum { function, script };
 var current: ?*Compiler = undefined;
 
 pub fn initCompiler(comp: *Compiler, alloc: std.mem.Allocator, ty: FunctionType, name: ?*Token) !void {
-    std.debug.print("Initializing compiler\n", .{});
     comp.function = try Function.create(alloc);
     comp.localCount = 0;
     comp.scopeDepth = 0;
@@ -267,6 +266,8 @@ pub const Parser = struct {
             self.ifStatement();
         } else if (self.match(.WHILE)) {
             self.whileStatement();
+        } else if (self.match(.RETURN)) {
+            self.returnStatement();
         } else if (self.match(.FOR)) {
             self.forStatement();
         } else if (self.match(.LBRACE)) {
@@ -282,6 +283,19 @@ pub const Parser = struct {
         self.expression();
         self.eat(.SEMICOLON, .expect_semicolon_after_value);
         self.emit_op(.PRINT);
+    }
+
+    fn returnStatement(self: *Self) void {
+        if (current.?.type == .script) {
+            self.err(.cannot_return_from_script);
+        }
+        if (self.match(.SEMICOLON)) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.eat(.SEMICOLON, .expect_semicolon_after_value);
+            self.emit_op(.RETURN);
+        }
     }
 
     // TODO: Implement continue, break
@@ -920,6 +934,7 @@ pub const CompileError = struct {
         loop_body_too_large,
         jump_too_large,
         duplicate_variable_declaration,
+        cannot_return_from_script,
     };
 
     pub fn printErr(err: CompileError.Tag) void {
@@ -959,6 +974,7 @@ pub const CompileError = struct {
             .loop_body_too_large => std.debug.print("Loop body too large.\n", .{}),
             .jump_too_large => std.debug.print("Jump offset too large.\n", .{}),
             .duplicate_variable_declaration => std.debug.print("Duplicate variable declaration.\n", .{}),
+            .cannot_return_from_script => std.debug.print("Can't return from top-level code.\n", .{}),
         }
     }
 };
