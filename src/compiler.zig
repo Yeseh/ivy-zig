@@ -46,6 +46,7 @@ pub const FunctionType = enum { function, script };
 var current: ?*Compiler = undefined;
 
 pub fn initCompiler(comp: *Compiler, alloc: std.mem.Allocator, ty: FunctionType, name: ?*Token) !void {
+    std.debug.print("Initializing compiler\n", .{});
     comp.function = try Function.create(alloc);
     comp.localCount = 0;
     comp.scopeDepth = 0;
@@ -210,6 +211,14 @@ pub const Parser = struct {
         }
 
         var fun = try self.end();
+        if (self.had_error or common.DEBUG_PRINT_CODE) {
+            if (fun.name == null) {
+                try debug.disassemble_chunk(&fun.chunk, "<script>");
+            } else {
+                try debug.disassemble_chunk(&fun.chunk, fun.name.?.asSlice());
+            }
+        }
+
         var retVal = if (self.had_error) null else fun;
         return retVal;
     }
@@ -822,14 +831,6 @@ pub const Parser = struct {
     fn end(self: *Self) !*Function {
         self.emit_return();
         var fun = current.?.function;
-        if (self.had_error) {
-            if (fun.name == null) {
-                try debug.disassemble_chunk(self.currentChunk(), "<script>");
-            } else {
-                try debug.disassemble_chunk(self.currentChunk(), fun.name.?.asSlice());
-            }
-        }
-
         current = current.?.enclosing;
         return fun;
     }

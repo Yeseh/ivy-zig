@@ -58,7 +58,6 @@ pub fn assertReturn(expected: IvyType, actual: IvyType) !void {
             try std.testing.expectEqual(expected.num, actual.num);
         },
         .object => {
-            std.debug.print("actual: {any}\n", .{actual.object.ty});
             try std.testing.expectEqual(expected.object.ty, actual.object.ty);
             switch (expected.object.ty) {
                 .String => {

@@ -90,6 +90,7 @@ pub const VirtualMachine = struct {
 
     pub fn run(self: *Self) !void {
         var frame = self.frames.cur();
+        var stackCount = self.stack.count;
 
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
@@ -212,10 +213,10 @@ pub const VirtualMachine = struct {
                     var argCount = self.read_byte(frame);
                     var peek = self.peekStack(argCount);
                     var called = try self.callValue(peek, argCount);
-                    if (!called) { return InterpreterError.RuntimeError; }
-
+                    if (!called) {
+                        return InterpreterError.RuntimeError;
+                    }
                     frame = self.frames.cur();
-                    break;
                 },
                 .POP_N => {
                     var n = self.read_byte(frame);
@@ -225,7 +226,6 @@ pub const VirtualMachine = struct {
                     }
                 },
                 .RETURN => {
-                    std.debug.print("return\n", .{});
                     var result = self.popStack();
                     self.frames.count -= 1;
 
@@ -233,13 +233,12 @@ pub const VirtualMachine = struct {
                         _ = self.popStack();
                         return;
                     }
-
                     // Discard CallFrame
-                    var callFrameStart = self.stack.count - self.frames.count;
-                    self.stack.slice = self.stack.slice[0..callFrameStart];
+                    var dif = self.stack.count - stackCount;
+                    self.stack.count -= dif;
+
                     self.pushStack(result);
                     frame = self.frames.cur();
-                    break;
                 },
             }
         }
@@ -305,7 +304,6 @@ pub const VirtualMachine = struct {
     }
 
     fn callValue(self: *Self, callee: IvyType, argCount: u8) !bool {
-        std.debug.print("callValue {any}\n", .{callee});
         if (callee.is_obj()) {
             switch (callee.object.ty) {
                 .Function => {
