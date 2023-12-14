@@ -6,6 +6,7 @@ const chunk = @import("chunk.zig");
 const compiler = @import("compiler.zig");
 const Parser = compiler.Parser;
 const Scanner = @import("scanner.zig").Scanner;
+const defineNatives = @import("natives.zig").defineNatives;
 const table = @import("table.zig");
 const garbage = @import("garbage.zig");
 const Stack = @import("stack.zig").Stack;
@@ -54,6 +55,8 @@ pub const VirtualMachine = struct {
         globals = try table.init(alloc, 8);
         strings = try table.init(alloc, 8);
         var vm = VirtualMachine{ .ip = undefined, .frameCount = 0, .alloc = alloc, .frames = Stack(CallFrame).init(&frames), .stack = Stack(IvyType).init(&stack) };
+        try defineNatives(&vm);
+
         vm.resetStack();
         return vm;
     }
@@ -217,6 +220,7 @@ pub const VirtualMachine = struct {
                         return InterpreterError.RuntimeError;
                     }
                     frame = self.frames.cur();
+                    stackCount = self.stack.count;
                 },
                 .POP_N => {
                     var n = self.read_byte(frame);
@@ -239,6 +243,7 @@ pub const VirtualMachine = struct {
 
                     self.pushStack(result);
                     frame = self.frames.cur();
+                    stackCount = self.stack.count;
                 },
             }
         }
@@ -256,6 +261,69 @@ pub const VirtualMachine = struct {
         return IvyType.string(str);
     }
 
+    fn callValue(self: *Self, callee: IvyType, argCount: u8) !bool {
+        if (callee.is_obj()) {
+            switch (callee.object.ty) {
+                .Function => {
+                    return try self.call(callee.object_as(types.Function), argCount);
+                },
+                .NativeFunction => {
+                    var native = callee.object_as(types.NativeFunction).fun;
+                    var argStart = self.stack.count - argCount;
+                    var args = self.stack.slice[argStart..self.stack.count];
+                    std.debug.print("call native with args {any}\n", .{args});
+                    var result = native(args);
+                    // Discard native function and arguments
+                    self.stack.count -= argCount + 1;
+                    self.pushStack(result);
+                    return true;
+                },
+                else => {},
+            }
+        }
+        try self.rt_error("Can only call functions and classes", .{});
+        return false;
+    }
+
+    fn call(self: *Self, fun: *types.Function, argc: u8) !bool {
+        std.debug.print("call {s}\n", .{fun.getName()});
+        if (argc != fun.arity) {
+            try self.rt_error("Expected {} arguments but got {}.", .{ fun.arity, argc });
+            return false;
+        }
+        if (self.frameCount == FRAMES_MAX) {
+            try self.rt_error("Stack overflow.", .{});
+            return false;
+        }
+
+        var frame = self.frames.top();
+
+        self.frames.count += 1;
+        frame.function = fun;
+        frame.ip = fun.chunk.get_op_ptr();
+        var frameStart = self.stack.count - argc - 1;
+        frame.slots = self.stack.slice[frameStart..];
+
+        return true;
+    }
+
+    pub fn defineNative(self: *Self, name: []const u8, fun: types.NativeFn) !void {
+        var str = try String.copyInterned(self.alloc, name, &strings);
+        var native = try types.NativeFunction.create(self.alloc, fun);
+        var nfnType = IvyType.nativefn(native);
+
+        self.pushStack(IvyType.string(str));
+        self.pushStack(nfnType);
+
+        var isSet = try globals.set(str, nfnType);
+        _ = self.popStack();
+        _ = self.popStack();
+        if (!isSet) {
+            try self.rt_error("Redefining existing variable '{s}'.", .{str.asSlice()});
+        }
+    }
+
+    // TODO: move to IvyType
     pub fn is_falsey(self: *Self, value: IvyType) bool {
         _ = self;
         return value == .nil or (value.is_bool() and !value.as_bool());
@@ -287,6 +355,7 @@ pub const VirtualMachine = struct {
         return InterpreterError.RuntimeError;
     }
 
+    // TODO: These functions can be removed if we use the stack directly
     pub fn resetStack(self: *Self) void {
         self.stack.reset();
     }
@@ -301,41 +370,6 @@ pub const VirtualMachine = struct {
 
     pub fn peekStack(self: *Self, distance: usize) IvyType {
         return self.stack.peek(distance);
-    }
-
-    fn callValue(self: *Self, callee: IvyType, argCount: u8) !bool {
-        if (callee.is_obj()) {
-            switch (callee.object.ty) {
-                .Function => {
-                    return try self.call(callee.object_as(types.Function), argCount);
-                },
-                else => {},
-            }
-        }
-        try self.rt_error("Can only call functions and classes", .{});
-        return false;
-    }
-
-    fn call(self: *Self, fun: *types.Function, argc: u8) !bool {
-        std.debug.print("call {s}\n", .{fun.getName()});
-        if (argc != fun.arity) {
-            try self.rt_error("Expected {} arguments but got {}.", .{ fun.arity, argc });
-            return false;
-        }
-        if (self.frameCount == FRAMES_MAX) {
-            try self.rt_error("Stack overflow.", .{});
-            return false;
-        }
-
-        var frame = self.frames.top();
-
-        self.frames.count += 1;
-        frame.function = fun;
-        frame.ip = fun.chunk.get_op_ptr();
-        var frameStart = self.stack.count - argc - 1;
-        frame.slots = self.stack.slice[frameStart..];
-
-        return true;
     }
 
     fn binary_operation(self: *Self, op: OpCode) !void {

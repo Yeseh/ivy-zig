@@ -35,6 +35,7 @@ pub fn dump_stack(vm: *VM) void {
                 switch (obj.ty) {
                     .String => std.debug.print("        | [ string ", .{}),
                     .Function => std.debug.print("        | [ ", .{}),
+                    .NativeFunction => std.debug.print("        | [ ", .{}),
                 }
             },
             else => std.debug.print("        | [ {s} ", .{@tagName(item)}),

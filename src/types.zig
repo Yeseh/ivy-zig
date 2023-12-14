@@ -6,10 +6,12 @@ const ArrayList = std.ArrayList;
 const RuntimeErrror = common.RuntimeError;
 const Table = common.Table;
 const Chunk = common.Chunk;
+pub const NativeFn = *const fn ([]IvyType) IvyType;
 
 pub const ObjectType = enum(u8) {
     String,
     Function,
+    NativeFunction,
 };
 
 /// This is a generic object type. It is used to represent all objects in Ivy.
@@ -23,6 +25,26 @@ pub const Object = extern struct {
 
     pub fn as(self: *Self, comptime T: type) *T {
         return @ptrCast(@alignCast(self));
+    }
+};
+
+pub const NativeFunction = struct {
+    const Self = @This();
+
+    _obj: Object,
+    fun: NativeFn,
+
+    pub fn create(alloc: std.mem.Allocator, fun: NativeFn) !*Self {
+        var native = try alloc.create(Self);
+        native._obj.ty = ObjectType.Function;
+        native.fun = fun;
+        garbage.mark(@ptrCast(@alignCast(native)));
+        return native;
+    }
+
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        alloc.destroy(self);
+        self.* = undefined;
     }
 };
 
@@ -261,6 +283,10 @@ pub const IvyType = union(enum) {
         return Self{ .object = @ptrCast(@alignCast(str)) };
     }
 
+    pub fn nativefn(str: *NativeFunction) Self {
+        return Self{ .object = @ptrCast(@alignCast(str)) };
+    }
+
     pub fn function(fun: *Function) Self {
         return Self{ .object = @ptrCast(@alignCast(fun)) };
     }
@@ -282,6 +308,7 @@ pub const IvyType = union(enum) {
                         }
                         std.debug.print("<fn {s}>", .{name.?.asSlice()});
                     },
+                    .NativeFunction => std.debug.print("<native fn>", .{}),
                 }
             },
         }
@@ -326,16 +353,24 @@ pub const IvyType = union(enum) {
         return self.* == .object and self.object.ty == ot;
     }
 
-    pub inline fn is_string(self: *const Self) bool {
-        return self.is_obj_type(ObjectType.String);
-    }
-
     pub inline fn is_bool(self: *const Self) bool {
         return self.* == .bool;
     }
 
     pub inline fn is_num(self: *const Self) bool {
         return self.* == .num;
+    }
+
+    pub inline fn is_fn(self: *const Self) bool {
+        return self.is_obj_type(ObjectType.Function);
+    }
+
+    pub inline fn is_native_fn(self: *const Self) bool {
+        return self.is_obj_type(ObjectType.NativeFunction);
+    }
+
+    pub inline fn is_string(self: *const Self) bool {
+        return self.is_obj_type(ObjectType.String);
     }
 
     pub inline fn obj_type(self: *const Self) ?ObjectType {

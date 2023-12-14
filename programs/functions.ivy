@@ -1,10 +1,10 @@
 var a = "bla";
-print a;
+prnt(a);
 
 fn b() {
     var c = "blo";
-    print c;
+    prnt(c);
     return c;
 }
 
-print b();
+prnt(b());

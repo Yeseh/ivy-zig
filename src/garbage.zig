@@ -43,6 +43,14 @@ pub fn free(alloc: std.mem.Allocator) void {
                 func.deinit(alloc);
                 count += 1;
             },
+            .NativeFunction => {
+                var func = obj.?.as(types.NativeFunction);
+                if (common.DEBUG_PRINT_GC) {
+                    std.debug.print("GC: NativeFunction\n", .{});
+                }
+                func.deinit(alloc);
+                count += 1;
+            },
             // else => {},
         }
         obj = next;
