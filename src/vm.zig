@@ -318,6 +318,7 @@ pub const VirtualMachine = struct {
         var isSet = try globals.set(str, nfnType);
         _ = self.popStack();
         _ = self.popStack();
+
         if (!isSet) {
             try self.rt_error("Redefining existing variable '{s}'.", .{str.asSlice()});
         }

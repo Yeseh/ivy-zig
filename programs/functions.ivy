@@ -1,10 +1,11 @@
 var a = "bla";
-prnt(a);
+// TODO: fix function parameters
+prnt();
 
 fn b() {
     var c = "blo";
-    prnt(c);
+    prnt();
     return c;
 }
 
-prnt(b());
+prnt();

@@ -36,7 +36,7 @@ pub const NativeFunction = struct {
 
     pub fn create(alloc: std.mem.Allocator, fun: NativeFn) !*Self {
         var native = try alloc.create(Self);
-        native._obj.ty = ObjectType.Function;
+        native._obj.ty = ObjectType.NativeFunction;
         native.fun = fun;
         garbage.mark(@ptrCast(@alignCast(native)));
         return native;
@@ -301,12 +301,11 @@ pub const IvyType = union(enum) {
                 switch (self.object.ty) {
                     .String => std.debug.print("\"{s}\"", .{self.object_as(String).asSlice()}),
                     .Function => {
-                        var name = self.object_as(Function).name;
-                        if (name == null) {
+                        var fun = self.object_as(Function);
+                        if (fun.name != null)
+                            std.debug.print("<fn {s}>", .{fun.getName()})
+                        else
                             std.debug.print("<script>", .{});
-                            return;
-                        }
-                        std.debug.print("<fn {s}>", .{name.?.asSlice()});
                     },
                     .NativeFunction => std.debug.print("<native fn>", .{}),
                 }
