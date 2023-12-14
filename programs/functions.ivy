@@ -1,4 +1,5 @@
 var a = "bla";
+print a;
 
 fn b() {
     var c = "blo";

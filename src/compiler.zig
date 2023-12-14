@@ -42,10 +42,10 @@ pub const Local = struct {
 };
 
 pub const FunctionType = enum { function, script };
+// TODO: Global compiler bad
 var current: ?*Compiler = undefined;
 
 pub fn initCompiler(comp: *Compiler, alloc: std.mem.Allocator, ty: FunctionType, name: ?*Token) !void {
-    std.debug.print("Init compiler {} has_enc: {}\n", .{ ty, current != null });
     comp.function = try Function.create(alloc);
     comp.localCount = 0;
     comp.scopeDepth = 0;
@@ -81,7 +81,6 @@ pub const ParseRule = struct {
     infix: ?ParseFn,
 };
 
-// TODO: Use error set/tag for self.err();
 pub const Parser = struct {
     const TOKEN_COUNT = @typeInfo(TokenType).Enum.fields.len;
     const Self = @This();
@@ -371,14 +370,12 @@ pub const Parser = struct {
     }
 
     fn function(self: *Self, ty: FunctionType) void {
-        std.debug.print("compiling function, encnul: {}\n", .{current.?.enclosing == null});
         var fnComp: Compiler = undefined;
         initCompiler(&fnComp, self.alloc, ty, &self.prev) catch {
             self.err(.failed_to_initialize_compiler);
             return;
         };
 
-        std.debug.print("compiling function: {s}\n", .{current.?.enclosing.?.function.getName()});
         self.beginScope();
 
         self.eat(.LPAREN, .expect_lparen_after_function_name);
@@ -405,7 +402,6 @@ pub const Parser = struct {
             self.err(.failed_to_end_function_compilation);
             return;
         };
-        std.debug.print("end function: {}\n", .{current.?.enclosing == null});
         var funType = IvyType.function(fun);
         var constant = self.makeConstant(funType);
         self.emit_ops(.CONSTANT, @enumFromInt(constant));

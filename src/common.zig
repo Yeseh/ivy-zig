@@ -6,6 +6,7 @@ pub const Table = @import("table.zig");
 pub const DEBUG_PRINT_CODE = true;
 pub const DEBUG_PRINT_RETURN = false;
 pub const DEBUG_PRINT_GC = true;
+pub const DEBUG_PRINT_SOURCE = true;
 
 pub const RuntimeError = error{IndexOutOfBounds};
 

@@ -91,6 +91,26 @@ fn bla2(e: en, str: []const u8) void {
     }
 }
 
+var arr: [10]u8 = undefined;
+var arrCount: usize = 0;
+
+test "sliceStack" {
+    var stack = arr[0..];
+    var stackTop = stack.ptr;
+
+    stackTop[0] = 3;
+    stackTop = stackTop[1..arr.len];
+
+    var peek = stackTop[arr.len - 1 - 0];
+    try std.testing.expectEqual(peek, 3);
+
+    stackTop[0] = 5;
+    stackTop = stackTop[1..arr.len];
+
+    peek = stackTop[arr.len - 1 - 0];
+    try std.testing.expect(peek == 5);
+}
+
 test "switch" {
     bla2(en.One, "First");
     bla2(en.Two, "Second");

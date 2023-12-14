@@ -8,6 +8,7 @@ const Parser = compiler.Parser;
 const Scanner = @import("scanner.zig").Scanner;
 const table = @import("table.zig");
 const garbage = @import("garbage.zig");
+const Stack = @import("stack.zig").Stack;
 
 const Chunk = chunk.Chunk;
 const ChunkError = chunk.ChunkError;
@@ -33,7 +34,7 @@ pub const CallFrame = struct {
 
     function: *types.Function,
     ip: [*]u8,
-    slots: [*]IvyType,
+    slots: []IvyType,
 };
 
 // TODO: Look for more efficient ways to store globals
@@ -44,24 +45,15 @@ pub const VirtualMachine = struct {
     const Self = @This();
 
     ip: [*]u8,
-    frames: []CallFrame,
     frameCount: i32,
-    stack: []IvyType,
-    stackTop: [*]IvyType,
     alloc: std.mem.Allocator,
+    frames: Stack(CallFrame),
+    stack: Stack(IvyType),
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         globals = try table.init(alloc, 8);
         strings = try table.init(alloc, 8);
-        var vm = VirtualMachine{
-            .ip = undefined,
-            .frames = frames[0..],
-            .frameCount = 0,
-            .alloc = alloc,
-            .stack = stack[0..],
-            .stackTop = undefined,
-        };
-        vm.stackTop = vm.stack.ptr;
+        var vm = VirtualMachine{ .ip = undefined, .frameCount = 0, .alloc = alloc, .frames = Stack(CallFrame).init(&frames), .stack = Stack(IvyType).init(&stack) };
         vm.resetStack();
         return vm;
     }
@@ -74,7 +66,11 @@ pub const VirtualMachine = struct {
 
     /// Interpret a source buffer
     pub fn interpret(self: *Self, source: [:0]u8) !void {
-        std.debug.print("\n{s}\n", .{source});
+        if (common.DEBUG_PRINT_SOURCE) {
+            std.debug.print("\n=== Source Code ===\n", .{});
+            std.debug.print("{s}\n\n", .{source});
+        }
+
         var comp: Compiler = undefined;
         try compiler.initCompiler(&comp, self.alloc, FunctionType.script, null);
 
@@ -86,18 +82,18 @@ pub const VirtualMachine = struct {
             return InterpreterError.CompiletimeError;
         }
 
-        std.debug.print("compiled: {}\n", .{compiled.?});
-        try self.pushStack(IvyType.function(compiled.?));
+        self.pushStack(IvyType.function(compiled.?));
         _ = try self.call(compiled.?, 0);
 
         try self.run();
     }
 
     pub fn run(self: *Self) !void {
-        var frame = &self.frames[@intCast(self.frameCount - 1)];
+        var frame = self.frames.cur();
+
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
-                //debug.dump_stack(self);
+                debug.dump_stack(self);
                 const offset = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr());
                 _ = debug.disassemble_instruction(&frame.function.chunk, offset) catch |err| {
                     std.debug.print("{any}\n", .{err});
@@ -109,27 +105,27 @@ pub const VirtualMachine = struct {
             const instruction: OpCode = @enumFromInt(byte);
 
             switch (instruction) {
-                .CONSTANT => try self.pushStack(self.read_constant(frame)),
+                .CONSTANT => self.pushStack(self.read_constant(frame)),
                 .NEGATE => b: {
                     const value = self.peekStack(0);
                     switch (value) {
                         .num => {
                             const num = self.popStack().num;
-                            try self.pushStack(IvyType.number(-num));
+                            self.pushStack(IvyType.number(-num));
                             break :b;
                         },
                         else => {
                             try self.rt_error("Operand must be a number.", .{});
                         },
                     }
-                    try self.pushStack(value);
+                    self.pushStack(value);
                 },
-                .TRUE => try self.pushStack(IvyType.boolean(true)),
-                .FALSE => try self.pushStack(IvyType.boolean(false)),
-                .NIL => try self.pushStack(IvyType.nil()),
+                .TRUE => self.pushStack(IvyType.boolean(true)),
+                .FALSE => self.pushStack(IvyType.boolean(false)),
+                .NIL => self.pushStack(IvyType.nil()),
                 .NOT => b: {
                     const value = !self.popStack().as_bool();
-                    try self.pushStack(IvyType.boolean(value));
+                    self.pushStack(IvyType.boolean(value));
                     break :b;
                 },
                 .ADD => blk: {
@@ -140,11 +136,11 @@ pub const VirtualMachine = struct {
                         var b = self.popStack().object_as(String);
                         var a = self.popStack().object_as(String);
                         var str = try self.concatenate(a, b);
-                        try self.pushStack(str);
+                        self.pushStack(str);
                     } else if (pa.is_num() and pb.is_num()) {
                         var nb = self.popStack().num;
                         var na = self.popStack().num;
-                        try self.pushStack(IvyType.number(na + nb));
+                        self.pushStack(IvyType.number(na + nb));
                     } else {
                         try self.rt_error("Operands must be two numbers or two strings.", .{});
                     }
@@ -158,7 +154,7 @@ pub const VirtualMachine = struct {
                 .GREATER => try self.binary_operation(instruction),
                 .GET_LOCAL => {
                     var slot = self.read_byte(frame);
-                    try self.pushStack(frame.slots[slot]);
+                    self.pushStack(frame.slots[slot]);
                 },
                 .SET_LOCAL => {
                     var slot = self.read_byte(frame);
@@ -178,7 +174,7 @@ pub const VirtualMachine = struct {
                     if (global == null) {
                         try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
                     }
-                    try self.pushStack(global.?);
+                    self.pushStack(global.?);
                 },
                 .SET_GLOBAL => {
                     var name = self.read_constant(frame).object_as(String);
@@ -214,10 +210,11 @@ pub const VirtualMachine = struct {
                 },
                 .CALL => {
                     var argCount = self.read_byte(frame);
-                    if (!(try self.callValue(self.peekStack(argCount), argCount))) {
-                        return InterpreterError.RuntimeError;
-                    }
-                    frame = &self.frames[@intCast(self.frameCount - 1)];
+                    var peek = self.peekStack(argCount);
+                    var called = try self.callValue(peek, argCount);
+                    if (!called) { return InterpreterError.RuntimeError; }
+
+                    frame = self.frames.cur();
                     break;
                 },
                 .POP_N => {
@@ -230,14 +227,18 @@ pub const VirtualMachine = struct {
                 .RETURN => {
                     std.debug.print("return\n", .{});
                     var result = self.popStack();
-                    self.frameCount -= 1;
-                    if (self.frameCount == 0) {
-                        self.resetStack();
+                    self.frames.count -= 1;
+
+                    if (self.frames.count == 0) {
+                        _ = self.popStack();
                         return;
                     }
-                    self.stackTop = frame.slots;
-                    try self.pushStack(result);
-                    frame = &self.frames[@intCast(self.frameCount - 1)];
+
+                    // Discard CallFrame
+                    var callFrameStart = self.stack.count - self.frames.count;
+                    self.stack.slice = self.stack.slice[0..callFrameStart];
+                    self.pushStack(result);
+                    frame = self.frames.cur();
                     break;
                 },
             }
@@ -269,7 +270,7 @@ pub const VirtualMachine = struct {
         var i: usize = @intCast(self.frameCount);
         while (i > 0) {
             i -= 1;
-            var frame = &self.frames[i];
+            var frame = &self.frames.at(i);
 
             const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr()) - 1;
             const line = try frame.function.chunk.get_line_for_op(instruction);
@@ -288,24 +289,23 @@ pub const VirtualMachine = struct {
     }
 
     pub fn resetStack(self: *Self) void {
-        self.stackTop = self.stack.ptr;
+        self.stack.reset();
     }
 
-    pub fn pushStack(self: *Self, value: IvyType) !void {
-        self.stackTop[0] = value;
-        self.stackTop += 1;
+    pub fn pushStack(self: *Self, value: IvyType) void {
+        self.stack.push(value);
     }
 
     pub fn popStack(self: *Self) IvyType {
-        self.stackTop -= 1;
-        return self.stackTop[0];
+        return self.stack.pop();
     }
 
     pub fn peekStack(self: *Self, distance: usize) IvyType {
-        return self.stack[self.stack.len - 1 - distance];
+        return self.stack.peek(distance);
     }
 
     fn callValue(self: *Self, callee: IvyType, argCount: u8) !bool {
+        std.debug.print("callValue {any}\n", .{callee});
         if (callee.is_obj()) {
             switch (callee.object.ty) {
                 .Function => {
@@ -328,11 +328,15 @@ pub const VirtualMachine = struct {
             try self.rt_error("Stack overflow.", .{});
             return false;
         }
-        var frame = &self.frames[@intCast(self.frameCount)];
-        self.frameCount += 1;
+
+        var frame = self.frames.top();
+
+        self.frames.count += 1;
         frame.function = fun;
         frame.ip = fun.chunk.get_op_ptr();
-        frame.slots = self.stack.ptr - argc - 1;
+        var frameStart = self.stack.count - argc - 1;
+        frame.slots = self.stack.slice[frameStart..];
+
         return true;
     }
 
@@ -350,13 +354,13 @@ pub const VirtualMachine = struct {
         const a = self.popStack();
 
         switch (op) {
-            .DIVIDE => try self.pushStack(IvyType.number(a.num / b.num)),
-            .ADD => try self.pushStack(IvyType.number(a.num + b.num)),
-            .MULTIPLY => try self.pushStack(IvyType.number(a.num * b.num)),
-            .SUBTRACT => try self.pushStack(IvyType.number(a.num - b.num)),
-            .GREATER => try self.pushStack(IvyType.boolean(a.num > b.num)),
-            .LESS => try self.pushStack(IvyType.boolean(a.num < b.num)),
-            .EQUAL => try self.pushStack(IvyType.boolean(types.eql(a, b))),
+            .DIVIDE => self.pushStack(IvyType.number(a.num / b.num)),
+            .ADD => self.pushStack(IvyType.number(a.num + b.num)),
+            .MULTIPLY => self.pushStack(IvyType.number(a.num * b.num)),
+            .SUBTRACT => self.pushStack(IvyType.number(a.num - b.num)),
+            .GREATER => self.pushStack(IvyType.boolean(a.num > b.num)),
+            .LESS => self.pushStack(IvyType.boolean(a.num < b.num)),
+            .EQUAL => self.pushStack(IvyType.boolean(types.eql(a, b))),
             else => return InterpreterError.RuntimeError,
         }
     }

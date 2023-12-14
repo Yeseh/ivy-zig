@@ -28,10 +28,8 @@ pub fn disassemble_lines(chunk: *Chunk) void {
 }
 
 pub fn dump_stack(vm: *VM) void {
-    var i: usize = 0;
-    var stackTop = @intFromPtr(vm.stackPtr()) - @intFromPtr(vm.stackTop);
-    while (i < stackTop + 1) {
-        var item = vm.stack[i];
+    for (0..vm.stack.count) |i| {
+        var item = vm.stack.slice[i];
         switch (item) {
             .object => |obj| {
                 switch (obj.ty) {
