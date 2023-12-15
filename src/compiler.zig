@@ -210,13 +210,6 @@ pub const Parser = struct {
         }
 
         var fun = try self.end();
-        if (self.had_error or common.DEBUG_PRINT_CODE) {
-            if (fun.name == null) {
-                try debug.disassemble_chunk(&fun.chunk, "<script>");
-            } else {
-                try debug.disassemble_chunk(&fun.chunk, fun.name.?.asSlice());
-            }
-        }
 
         var retVal = if (self.had_error) null else fun;
         return retVal;
@@ -566,7 +559,7 @@ pub const Parser = struct {
         if (!self.check(.RPAREN)) {
             self.expression();
             argCount += 1;
-            while (!self.match(.COMMA)) {
+            while (self.match(.COMMA)) {
                 self.expression();
                 if (argCount == U8Max) {
                     self.err(.too_many_arguments);
@@ -845,6 +838,13 @@ pub const Parser = struct {
     fn end(self: *Self) !*Function {
         self.emit_return();
         var fun = current.?.function;
+        if (self.had_error or common.DEBUG_PRINT_CODE) {
+            if (fun.name == null) {
+                try debug.disassemble_chunk(&fun.chunk, "<script>");
+            } else {
+                try debug.disassemble_chunk(&fun.chunk, fun.name.?.asSlice());
+            }
+        }
         current = current.?.enclosing;
         return fun;
     }

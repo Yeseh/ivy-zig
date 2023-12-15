@@ -5,14 +5,13 @@ const VM = @import("vm.zig").VirtualMachine;
 const IvyType = types.IvyType;
 
 pub fn defineNatives(vm: *VM) !void {
-    try vm.defineNative("prnt", &ivyPrint);
+    try vm.defineNative("prnt", &print);
 }
 
-fn ivyPrint(args: []IvyType) IvyType {
-    std.debug.print("Printing: {any}\n", .{args});
+fn print(args: []IvyType) IvyType {
     for (args) |arg| {
-        std.debug.print("  {}\n", .{arg.print()});
+        arg.print();
+        std.debug.print("\n", .{});
     }
-
     return IvyType.nil();
 }

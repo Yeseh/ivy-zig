@@ -220,7 +220,6 @@ pub const VirtualMachine = struct {
                         return InterpreterError.RuntimeError;
                     }
                     frame = self.frames.cur();
-                    stackCount = self.stack.count;
                 },
                 .POP_N => {
                     var n = self.read_byte(frame);
@@ -271,7 +270,6 @@ pub const VirtualMachine = struct {
                     var native = callee.object_as(types.NativeFunction).fun;
                     var argStart = self.stack.count - argCount;
                     var args = self.stack.slice[argStart..self.stack.count];
-                    std.debug.print("call native with args {any}\n", .{args});
                     var result = native(args);
                     // Discard native function and arguments
                     self.stack.count -= argCount + 1;
@@ -286,7 +284,6 @@ pub const VirtualMachine = struct {
     }
 
     fn call(self: *Self, fun: *types.Function, argc: u8) !bool {
-        std.debug.print("call {s}\n", .{fun.getName()});
         if (argc != fun.arity) {
             try self.rt_error("Expected {} arguments but got {}.", .{ fun.arity, argc });
             return false;

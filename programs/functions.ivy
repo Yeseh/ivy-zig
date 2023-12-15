@@ -1,11 +1,10 @@
-var a = "bla";
-// TODO: fix function parameters
-prnt();
+var a = "Hello";
+prnt(a);
 
-fn b() {
-    var c = "blo";
-    prnt();
-    return c;
+fn b(str) {
+    prnt(str);
+    return str;
 }
 
-prnt();
+var str = b(a);
+prnt(str + ", World!");

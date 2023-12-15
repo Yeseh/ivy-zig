@@ -44,7 +44,6 @@ pub const NativeFunction = struct {
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.destroy(self);
-        self.* = undefined;
     }
 };
 
@@ -70,7 +69,6 @@ pub const Function = struct {
         self.chunk.deinit();
         alloc.destroy(self);
         self.arity = 0;
-        self.* = undefined;
     }
 
     pub fn getName(self: *Self) []const u8 {
@@ -299,7 +297,7 @@ pub const IvyType = union(enum) {
             .nil => std.debug.print("nil", .{}),
             .object => {
                 switch (self.object.ty) {
-                    .String => std.debug.print("\"{s}\"", .{self.object_as(String).asSlice()}),
+                    .String => std.debug.print("{s}", .{self.object_as(String).asSlice()}),
                     .Function => {
                         var fun = self.object_as(Function);
                         if (fun.name != null)
