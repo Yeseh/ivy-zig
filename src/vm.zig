@@ -204,11 +204,6 @@ pub const VirtualMachine = struct {
                     var offset = self.read_short(frame);
                     frame.ip -= offset;
                 },
-                .PRINT => {
-                    var value = self.popStack();
-                    value.print();
-                    std.debug.print("\n", .{});
-                },
                 .POP => {
                     _ = self.popStack();
                 },

@@ -119,7 +119,6 @@ pub const TokenType = enum(u8) {
     IF,
     NIL,
     OR,
-    PRINT,
     RETURN,
     SUPER,
     THIS,
@@ -295,7 +294,6 @@ pub const Scanner = struct {
             'i' => self.check_keyword(1, 1, "f", TokenType.IF),
             'n' => self.check_keyword(1, 2, "il", TokenType.NIL),
             'o' => self.check_keyword(1, 1, "r", TokenType.OR),
-            'p' => self.check_keyword(1, 4, "rint", TokenType.PRINT),
             'r' => self.check_keyword(1, 5, "eturn", TokenType.RETURN),
             's' => self.check_keyword(1, 4, "uper", TokenType.SUPER),
             'v' => self.check_keyword(1, 2, "ar", TokenType.VAR),
@@ -439,9 +437,9 @@ test "Scanner.basic" {
         }
     }
     {
-        var scan = try Scanner.init(alloc, "and class else false for fun if nil or print return super this true var while blabla");
+        var scan = try Scanner.init(alloc, "and class else false for fun if nil or return super this true var while blabla");
         var expected = [_]TokenType{
-            .AND, .CLASS, .ELSE, .FALSE, .FOR, .FN, .IF, .NIL, .OR, .PRINT, .RETURN, .SUPER, .THIS, .TRUE, .VAR, .WHILE, .IDENTIFIER, .EOF,
+            .AND, .CLASS, .ELSE, .FALSE, .FOR, .FN, .IF, .NIL, .OR, .RETURN, .SUPER, .THIS, .TRUE, .VAR, .WHILE, .IDENTIFIER, .EOF,
         };
 
         var token: Token = undefined;

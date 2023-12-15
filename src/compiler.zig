@@ -169,8 +169,6 @@ pub const Parser = struct {
                 ParseRule{ .precedence = .NONE, .prefix = &literal, .infix = null },
                 // OR
                 ParseRule{ .precedence = .OR, .prefix = null, .infix = &_or },
-                // PRINT
-                ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // RETURN
                 ParseRule{ .precedence = .NONE, .prefix = null, .infix = null },
                 // SUPER
@@ -253,9 +251,7 @@ pub const Parser = struct {
     }
 
     fn statement(self: *Self) void {
-        if (self.match(.PRINT)) {
-            self.printStatement();
-        } else if (self.match(.IF)) {
+        if (self.match(.IF)) {
             self.ifStatement();
         } else if (self.match(.WHILE)) {
             self.whileStatement();
@@ -270,12 +266,6 @@ pub const Parser = struct {
         } else {
             self.expressionStatement();
         }
-    }
-
-    fn printStatement(self: *Self) void {
-        self.expression();
-        self.eat(.SEMICOLON, .expect_semicolon_after_value);
-        self.emit_op(.PRINT);
     }
 
     fn returnStatement(self: *Self) void {
@@ -858,7 +848,7 @@ pub const Parser = struct {
             }
 
             switch (self.cur.type) {
-                .CLASS, .FN, .VAR, .FOR, .IF, .WHILE, .PRINT, .RETURN => return,
+                .CLASS, .FN, .VAR, .FOR, .IF, .WHILE, .RETURN => return,
                 else => {},
             }
 

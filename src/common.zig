@@ -26,7 +26,6 @@ pub const OpCode = enum(u8) {
     EQUAL,
     GREATER,
     LESS,
-    PRINT,
     POP,
     POP_N,
     GET_LOCAL,

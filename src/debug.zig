@@ -72,7 +72,6 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
         .EQUAL => simpleInstruction("EQUAL", offset),
         .LESS => simpleInstruction("LESS", offset),
         .GREATER => simpleInstruction("GREATER", offset),
-        .PRINT => simpleInstruction("PRINT", offset),
         .POP => simpleInstruction("POP", offset),
         .POP_N => constantInstruction("POP_N", chunk, offset),
         .DEFINE_GLOBAL => constantInstruction("DEFINE_GLOBAL", chunk, offset),
