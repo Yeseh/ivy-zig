@@ -1,6 +1,5 @@
 const std = @import("std");
 const common = @import("common.zig");
-const String = @import("object/string.zig").String;
 const VM = @import("vm.zig").VirtualMachine;
 
 const Chunk = common.Chunk;

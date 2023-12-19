@@ -13,13 +13,13 @@ pub fn assertCompiled(expected: []OpCode, code: std.ArrayList(u8)) !void {
     var gotPtr: usize = 0;
 
     while (expPtr < expected.len) {
-        var got = code.items[gotPtr];
+        const got = code.items[gotPtr];
         // If CONSTANT
         if (got == 0) {
             gotPtr += 1;
         }
 
-        var exp = expected[expPtr];
+        const exp = expected[expPtr];
         try std.testing.expectEqual(got, @intFromEnum(exp));
 
         gotPtr += 1;
@@ -36,7 +36,7 @@ pub fn runVm(allocator: std.mem.Allocator, source: [:0]const u8, expected: VmTes
     var vm = try VM.init(allocator);
     defer vm.deinit();
 
-    var val = try vm.interpret(@constCast(source)); //catch |err| {
+    const val = try vm.interpret(@constCast(source)); //catch |err| {
     switch (expected) {
         .ok => try assertReturn(expected.ok, val),
         else => unreachable,

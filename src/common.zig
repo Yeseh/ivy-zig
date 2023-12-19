@@ -3,6 +3,7 @@ pub const ChunkError = @import("chunk.zig").ChunkError;
 pub const IvyType = @import("types.zig").IvyType;
 pub const Table = @import("table.zig");
 
+// TODO: Should be cmdline flags
 pub const DEBUG_PRINT_CODE = false;
 pub const DEBUG_PRINT_RETURN = false;
 pub const DEBUG_PRINT_GC = false;
