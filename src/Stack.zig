@@ -71,7 +71,7 @@ test "basic" {
     peek = stack.peek(1);
     try std.testing.expectEqual(peek, 1);
 
-    var pop = stack.pop();
+    const pop = stack.pop();
     try std.testing.expectEqual(pop, 2);
 
     stack.reset();

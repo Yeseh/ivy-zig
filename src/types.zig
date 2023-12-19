@@ -102,8 +102,8 @@ pub const String = extern struct {
     /// Assumes that the slice include 1 byte for the null-terminator.
     /// Calculates the string hash and saves the string to the Interment Table
     pub fn createInterned(alloc: std.mem.Allocator, chars: []u8, table: *Table) !*Self {
-        var hsh = String.hash(chars);
-        var interned = table.findString(chars, hsh);
+        const hsh = String.hash(chars);
+        const interned = table.findString(chars, hsh);
         if (interned != null) {
             alloc.free(std.mem.sliceTo(chars, 0));
             return interned.?;
@@ -118,8 +118,8 @@ pub const String = extern struct {
     /// Creates a new string Object from a slice.
     /// Copies the slice passed in, and takes ownership of the copy.
     pub fn copyInterned(alloc: std.mem.Allocator, chars: []const u8, table: *Table) !*Self {
-        var hsh = String.hash(chars);
-        var interned = table.findString(chars, hsh);
+        const hsh = String.hash(chars);
+        const interned = table.findString(chars, hsh);
         if (interned != null) {
             return interned.?;
         }
@@ -148,7 +148,7 @@ pub const String = extern struct {
     }
 
     pub fn copy(alloc: std.mem.Allocator, slice: []const u8) !*Self {
-        var buf: []u8 = try alloc.alloc(u8, slice.len + 1);
+        const buf: []u8 = try alloc.alloc(u8, slice.len + 1);
         @memcpy(buf, slice.ptr);
 
         var str = try alloc.create(Self);
@@ -189,9 +189,9 @@ pub const String = extern struct {
     /// Resizes the internal buffer.
     /// Invalidates pointers to the strings characters
     fn resize(self: *Self, alloc: std.mem.Allocator, new: usize) !void {
-        var newCapacity = self.growCapacityTo(new);
+        const newCapacity = self.growCapacityTo(new);
         // TODO: realloc
-        var newBuf: []u8 = try alloc.alloc(u8, newCapacity);
+        const newBuf: []u8 = try alloc.alloc(u8, newCapacity);
         @memcpy(newBuf, self._buf);
 
         alloc.free(self.allocatedSlice());
@@ -222,13 +222,13 @@ pub const String = extern struct {
 
     /// Returns a new slice that is a view into the string
     pub fn asSlice(self: *Self) []const u8 {
-        var slice: []const u8 = self._buf[0..self._len]; //std.mem.sliceTo(self._buf, 0);
+        const slice: []const u8 = self._buf[0..self._len]; //std.mem.sliceTo(self._buf, 0);
         return slice;
     }
 
     /// Deinitializes a string. Should be called with the same allocator that was used to create it.
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
-        var slice = self.allocatedSlice();
+        const slice = self.allocatedSlice();
         alloc.free(slice);
         self._len = 0;
         self._capacity = 0;
@@ -245,7 +245,7 @@ pub const String = extern struct {
 
     /// Returns the index of the given character
     pub fn indexOf(self: *Self, c: u8) ?usize {
-        var slice = self.asSlice();
+        const slice = self.asSlice();
         return std.mem.indexOf(u8, slice, c);
     }
 
@@ -328,7 +328,7 @@ pub const IvyType = union(enum) {
             .object => switch (self.object.ty) {
                 .String => blk: {
                     var str = self.object_as(String);
-                    var copy = try String.copy(alloc, std.mem.sliceTo(str.allocatedSlice(), 0));
+                    const copy = try String.copy(alloc, std.mem.sliceTo(str.allocatedSlice(), 0));
                     break :blk IvyType.string(copy);
                 },
                 // Clone function ?
@@ -419,7 +419,7 @@ pub fn eql(a: IvyType, b: IvyType) bool {
 // TODO: Test for string interning
 test "String" {
     const allocator = std.testing.allocator;
-    var slice = "Hello, World!";
+    const slice = "Hello, World!";
     {
         var string = try String.copy(allocator, slice);
         defer string.deinit(allocator);
@@ -429,7 +429,7 @@ test "String" {
         try std.testing.expect(std.mem.eql(u8, slice, string.asSlice()));
     }
     {
-        var buf = try allocator.alloc(u8, slice.len + 1);
+        const buf = try allocator.alloc(u8, slice.len + 1);
         @memcpy(buf, slice.ptr);
         var string = try String.create(allocator, buf);
         defer string.deinit(allocator);

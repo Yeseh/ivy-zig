@@ -76,13 +76,13 @@ pub fn addAll(self: *Self, other: *Self) !void {
 }
 
 pub fn set(self: *Self, key: *String, value: IvyType) !bool {
-    var maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
-    var addCount = @as(f64, @floatFromInt(self.count + 1));
+    const maxCapacity = @as(f64, @floatFromInt(self.capacity)) * TABLE_MAX_LOAD;
+    const addCount = @as(f64, @floatFromInt(self.count + 1));
     if (addCount > maxCapacity) {
-        var newCapacity = self.growCapacity();
+        const newCapacity = self.growCapacity();
         try self.adjustCapacity(newCapacity);
     }
-    var handle = self.find(key);
+    const handle = self.find(key);
 
     switch (handle) {
         // Key already exists
@@ -92,7 +92,7 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
         },
         // Recycle a tombstone
         .tombstone => {
-            var bucket = Entry.Bucket{
+            const bucket = Entry.Bucket{
                 .key = key,
                 .value = value,
             };
@@ -101,7 +101,7 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
         },
         // Use an empty bucket
         .empty => {
-            var bucket = Entry.Bucket{
+            const bucket = Entry.Bucket{
                 .key = key,
                 .value = value,
             };
@@ -115,7 +115,7 @@ pub fn set(self: *Self, key: *String, value: IvyType) !bool {
 pub fn get(self: *Self, key: *String) ?IvyType {
     if (self.count == 0) return null;
 
-    var handle = self.find(key);
+    const handle = self.find(key);
     if (handle == .full) {
         return self.entries[handle.full].full.value;
     }
@@ -126,7 +126,7 @@ pub fn get(self: *Self, key: *String) ?IvyType {
 pub fn delete(self: *Self, key: *String) bool {
     if (self.count == 0) return false;
 
-    var handle = self.find(key);
+    const handle = self.find(key);
     if (handle == .full) {
         self.entries[handle.full] = Entry.tombstone();
         return true;
@@ -143,9 +143,9 @@ pub fn findString(self: *Self, chars: []const u8, hash: u32) ?*String {
         switch (entry.*) {
             .full => {
                 var key = entry.full.key.?;
-                var leneql = key._len == chars.len;
-                var memeql = std.mem.eql(u8, chars, key.asSlice());
-                var hasheql = key.hash == hash;
+                const leneql = key._len == chars.len;
+                const memeql = std.mem.eql(u8, chars, key.asSlice());
+                const hasheql = key.hash == hash;
 
                 if (leneql and hasheql and memeql)
                     return entry.full.value.object_as(String);
@@ -161,7 +161,7 @@ pub fn findString(self: *Self, chars: []const u8, hash: u32) ?*String {
 }
 
 fn growCapacity(self: *Self) TableSize {
-    var newCapacity = self.capacity * 2;
+    const newCapacity = self.capacity * 2;
     if (newCapacity < 8) return 8;
     return newCapacity;
 }
@@ -171,7 +171,7 @@ fn find(self: *Self, key: *String) Entry.Handle {
     var tombstone: ?Entry.Handle = null;
 
     while (true) {
-        var entry = &self.entries[index];
+        const entry = &self.entries[index];
         switch (entry.*) {
             // There is a bucket entry here
             .full => {
@@ -202,7 +202,7 @@ fn adjustCapacity(self: *Self, capacity: u32) !void {
         // Don't copy empty or tombstone entries
         if (entry != .full) continue;
 
-        var handle = newTable.find(entry.full.key.?);
+        const handle = newTable.find(entry.full.key.?);
         switch (handle) {
             .tombstone => {},
             .full => {
@@ -235,9 +235,9 @@ test "Table.basic" {
     defer str3.deinit(a);
     defer str4.deinit(a);
 
-    var val1 = IvyType.number(10);
-    var val2 = IvyType.boolean(true);
-    var val3 = IvyType.number(20);
+    const val1 = IvyType.number(10);
+    const val2 = IvyType.boolean(true);
+    const val3 = IvyType.number(20);
 
     try std.testing.expect(try table.set(str1, val1));
     // try std.testing.expectEqual(table.capacity, 2);
@@ -248,27 +248,27 @@ test "Table.basic" {
     try std.testing.expectEqual(table.count, 2);
     try std.testing.expectEqual(table.capacity, 8);
 
-    var got1 = table.get(str1);
+    const got1 = table.get(str1);
     try std.testing.expect(got1.?.num == 10);
 
-    var got2 = table.get(str2);
+    const got2 = table.get(str2);
     try std.testing.expect(got2.?.bool == true);
 
     try std.testing.expect(try table.set(str3, val3));
     try std.testing.expect(table.capacity > 2);
 
-    var got3 = table.get(str3);
+    const got3 = table.get(str3);
     try std.testing.expect(got3.?.num == 20);
     try std.testing.expectEqual(table.count, 3);
 
-    var got4 = table.get(str4);
+    const got4 = table.get(str4);
     try std.testing.expect(got4 == null);
 
     try std.testing.expect(table.delete(str1));
     try std.testing.expect(!table.delete(str4));
 
     var str5 = try String.copy(a, "foo");
-    var val5 = IvyType.number(30);
+    const val5 = IvyType.number(30);
     defer str5.deinit(a);
 
     try std.testing.expect(try table.set(str5, val5));
@@ -291,10 +291,10 @@ test "Table.addAll" {
     defer k3.deinit(a);
     defer k4.deinit(a);
 
-    var v1 = IvyType.number(1);
-    var v2 = IvyType.number(2);
-    var v3 = IvyType.number(3);
-    var v4 = IvyType.number(4);
+    const v1 = IvyType.number(1);
+    const v2 = IvyType.number(2);
+    const v3 = IvyType.number(3);
+    const v4 = IvyType.number(4);
 
     try std.testing.expect(try tableA.set(k1, v1));
     try std.testing.expect(try tableA.set(k2, v2));
@@ -304,10 +304,10 @@ test "Table.addAll" {
     try tableA.addAll(&tableB);
     try std.testing.expectEqual(tableA.count, 4);
 
-    var got1 = tableA.get(k1).?;
-    var got2 = tableA.get(k2).?;
-    var got3 = tableA.get(k3).?;
-    var got4 = tableA.get(k4).?;
+    const got1 = tableA.get(k1).?;
+    const got2 = tableA.get(k2).?;
+    const got3 = tableA.get(k3).?;
+    const got4 = tableA.get(k4).?;
 
     try std.testing.expect(got1.num == 1);
     try std.testing.expect(got2.num == 2);

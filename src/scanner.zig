@@ -15,70 +15,6 @@ pub const Token = struct {
     }
 };
 
-// pub const CharIter = struct {
-//     const Self = @This();
-
-//     value: [:0]const u8,
-//     current: [:0]const u8,
-
-//     pub fn new(value: [:0]const u8) Self {
-//         return Self{ .value = value, .current = value };
-//     }
-
-//     pub fn next(self: *Self) ?u8 {
-//         if (self.current.len == 0) {
-//             return null;
-//         }
-
-//         var c = self.current[0];
-//         self.current = self.current[1..];
-//         return c;
-//     }
-// };
-
-// pub const Cursor = struct {
-//     const Self = @This();
-
-//     len_remaining: usize,
-//     chars: CharIter,
-//     // TODO: Only in debug builds?
-//     prev: u8,
-
-//     pub fn new(input: [:0]const u8) Self {
-//         return Self{ .len_remaining = input.len, .chars = CharIter.new(input), .prev = EOF_CHAR };
-//     }
-
-//     pub fn advance(self: *Self) ?u8 {
-//         var c = self.chars.next();
-//         if (c == null) {
-//             return null;
-//         }
-//         self.prev = c;
-//         return c;
-//     }
-
-//     pub fn peek(self: *Self) u8 {
-//         var c = self.*;
-//         return c.chars.next() orelse EOF_CHAR;
-//     }
-
-//     pub fn second(self: *Self) u8 {
-//         var c = self.*;
-//         _ = c.chars.next();
-//         return c.chars.next() orelse EOF_CHAR;
-//     }
-
-//     pub fn is_eof(self: *Self) bool {
-//         return self.len_remaining == 0;
-//     }
-
-//     pub fn eat_while(self: *Self, predicate: ParsePredicate) void {
-//         while (predicate(self.peek()) and !self.is_eof()) {
-//             _ = self.advance();
-//         }
-//     }
-// };
-
 pub const TokenType = enum(u8) {
     // Single char
     LPAREN,
@@ -167,7 +103,7 @@ pub const Scanner = struct {
             return self.number();
         }
 
-        var token = switch (c) {
+        const token = switch (c) {
             '(' => self.make_token(TokenType.LPAREN),
             ')' => self.make_token(TokenType.RPAREN),
             '{' => self.make_token(TokenType.LBRACE),
@@ -198,14 +134,14 @@ pub const Scanner = struct {
     }
 
     fn peekN(self: *Self, n: u8) []const u8 {
-        var end = 1 + n;
+        const end = 1 + n;
         return self.current[1..end];
     }
 
     /// match multiple chars for complex tokens
     fn matchN(self: *Self, expected: []const u8) bool {
-        var cmp = self.current[0..expected.len];
-        var eql = std.mem.eql(u8, expected, cmp);
+        const cmp = self.current[0..expected.len];
+        const eql = std.mem.eql(u8, expected, cmp);
         if (!eql) {
             return false;
         }
@@ -215,7 +151,7 @@ pub const Scanner = struct {
     }
 
     fn match(self: *Self, expected: u8) bool {
-        var cmp = self.current[0];
+        const cmp = self.current[0];
         if (expected != cmp) {
             return false;
         }
@@ -277,7 +213,7 @@ pub const Scanner = struct {
             _ = self.adv();
         }
 
-        var tt = switch (self.start[0]) {
+        const tt = switch (self.start[0]) {
             'a' => self.check_keyword(1, 2, "nd", TokenType.AND),
             'c' => blk: {
                 if (self.current_diff() > 1) {
@@ -332,9 +268,9 @@ pub const Scanner = struct {
     }
 
     fn check_keyword(self: *Self, start: u8, length: u8, rest: []const u8, ty: TokenType) TokenType {
-        var len = self.current_diff() == start + length;
-        var cmp = self.start[start .. start + length];
-        var eql = std.mem.eql(u8, cmp, rest);
+        const len = self.current_diff() == start + length;
+        const cmp = self.start[start .. start + length];
+        const eql = std.mem.eql(u8, cmp, rest);
 
         if (len and eql) {
             return ty;
@@ -348,7 +284,7 @@ pub const Scanner = struct {
             _ = self.adv();
         }
 
-        var pk = self.peek();
+        const pk = self.peek();
 
         if (pk == '.') {
             _ = self.adv();
@@ -369,7 +305,7 @@ pub const Scanner = struct {
     }
 
     fn make_token(self: *Self, tt: TokenType) Token {
-        var end = @intFromPtr(self.current.ptr) - @intFromPtr(self.start.ptr);
+        const end = @intFromPtr(self.current.ptr) - @intFromPtr(self.start.ptr);
         return Token{
             .type = tt,
             .lex = self.start[0..end],
@@ -378,7 +314,7 @@ pub const Scanner = struct {
     }
 
     fn adv(self: *Self) u8 {
-        var c = self.current[0];
+        const c = self.current[0];
         self.current = self.current[1..];
         return c;
     }
@@ -388,11 +324,12 @@ pub const Scanner = struct {
     }
 };
 
+// TODO: Rewrite these with scanner rewrite
 test "Scanner.basic" {
     const alloc = std.testing.allocator;
     {
         var scan = try Scanner.init(alloc, "(){};,.+-*/\\");
-        var expected = [_]TokenType{
+        const expected = [_]TokenType{
             .LPAREN, .RPAREN, .LBRACE, .RBRACE, .SEMICOLON, .COMMA, .DOT,
             .PLUS,   .MINUS,  .STAR,   .FSLASH, .BSLASH,    .EOF,
         };
@@ -406,7 +343,7 @@ test "Scanner.basic" {
     }
     {
         var scan = try Scanner.init(alloc, "! != = == < <= > >=");
-        var expected = [_]TokenType{
+        const expected = [_]TokenType{
             .BANG, .BANG_EQUAL, .EQUAL, .EQUAL_EQUAL, .LESS, .LESS_EQUAL, .GREATER, .GREATER_EQUAL, .EOF,
         };
 
@@ -422,7 +359,7 @@ test "Scanner.basic" {
     }
     {
         var scan = try Scanner.init(alloc, "9 19 19.8 1111.8888");
-        var expected = [_]TokenType{
+        const expected = [_]TokenType{
             .NUMBER, .NUMBER, .NUMBER, .NUMBER, .EOF,
         };
 
@@ -438,7 +375,7 @@ test "Scanner.basic" {
     }
     {
         var scan = try Scanner.init(alloc, "and class else false for fun if nil or return super this true var while blabla");
-        var expected = [_]TokenType{
+        const expected = [_]TokenType{
             .AND, .CLASS, .ELSE, .FALSE, .FOR, .FN, .IF, .NIL, .OR, .RETURN, .SUPER, .THIS, .TRUE, .VAR, .WHILE, .IDENTIFIER, .EOF,
         };
 
@@ -454,7 +391,7 @@ test "Scanner.basic" {
     }
     {
         var scan = try Scanner.init(alloc, "1+2/3*4-5");
-        var expected = [_]TokenType{
+        const expected = [_]TokenType{
             .NUMBER, .PLUS, .NUMBER, .FSLASH, .NUMBER, .STAR, .NUMBER, .MINUS, .NUMBER, .EOF,
         };
 
@@ -470,7 +407,7 @@ test "Scanner.basic" {
     }
     {
         var scan = try Scanner.init(alloc, "var bla = true;\n");
-        var expected = [_]TokenType{
+        const expected = [_]TokenType{
             .VAR, .IDENTIFIER, .EQUAL, .TRUE, .SEMICOLON, .EOF,
         };
 

@@ -50,19 +50,19 @@ test "inheritance" {
     gc.class = 2;
     defer allocator.destroy(gc);
 
-    var child_as_obj: *Object = @ptrCast(child);
+    const child_as_obj: *Object = @ptrCast(child);
     try std.testing.expect(child_as_obj.id == 3);
 
-    var obj_as_child: *Child = @ptrCast(child_as_obj);
+    const obj_as_child: *Child = @ptrCast(child_as_obj);
     try std.testing.expect(obj_as_child.age == 10);
 
-    var gc_as_child: *Child = @ptrCast(gc);
-    var gc_as_obj: *Object = @ptrCast(gc);
+    const gc_as_child: *Child = @ptrCast(gc);
+    const gc_as_obj: *Object = @ptrCast(gc);
     try std.testing.expect(gc_as_child.age == 2);
     try std.testing.expect(gc_as_obj.id == 4);
 
-    var child_as_gc: *GrandChild = @ptrCast(gc_as_child);
-    var obj_as_gc: *GrandChild = @ptrCast(gc_as_obj);
+    const child_as_gc: *GrandChild = @ptrCast(gc_as_child);
+    const obj_as_gc: *GrandChild = @ptrCast(gc_as_obj);
     try std.testing.expect(child_as_gc.class == 2);
     try std.testing.expect(obj_as_gc.class == 2);
 }
@@ -95,7 +95,7 @@ var arr: [10]u8 = undefined;
 var arrCount: usize = 0;
 
 test "sliceStack" {
-    var stack = arr[0..];
+    const stack = arr[0..];
     var stackTop = stack.ptr;
 
     stackTop[0] = 3;

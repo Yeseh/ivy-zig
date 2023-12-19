@@ -22,7 +22,7 @@ pub fn free(alloc: std.mem.Allocator) void {
     var obj = objects;
     var count: u32 = 0;
     while (obj != null) {
-        var next = obj.?.next;
+        const next = obj.?.next;
         switch (obj.?.ty) {
             .String => {
                 var str = obj.?.as(String);

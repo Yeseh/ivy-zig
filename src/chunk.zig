@@ -34,9 +34,9 @@ pub const Chunk = struct {
     constants: std.ArrayList(IvyType),
 
     pub fn init(alloc: Allocator) !Self {
-        var constants = try std.ArrayList(IvyType).initCapacity(alloc, 8);
-        var code = try std.ArrayList(u8).initCapacity(alloc, 8);
-        var lineInfo = try std.ArrayList(LineInfo).initCapacity(alloc, 8);
+        const constants = try std.ArrayList(IvyType).initCapacity(alloc, 8);
+        const code = try std.ArrayList(u8).initCapacity(alloc, 8);
+        const lineInfo = try std.ArrayList(LineInfo).initCapacity(alloc, 8);
         return Self{
             .alloc = alloc,
             .lines = lineInfo,
@@ -79,7 +79,7 @@ pub const Chunk = struct {
             var cur_line = self.get_line(line_len - 1);
             cur_line.inst_count += 1;
         } else {
-            var info = LineInfo{ .line = line, .inst_count = 1 };
+            const info = LineInfo{ .line = line, .inst_count = 1 };
             try self.lines.append(info);
         }
     }
@@ -97,7 +97,7 @@ pub const Chunk = struct {
         var cnt: usize = 0;
 
         while (line_idx < op_idx and line_idx < self.lines.items.len) {
-            var cur = self.get_line(line_idx);
+            const cur = self.get_line(line_idx);
             cnt += cur.inst_count;
             if (cnt > op_idx) {
                 return cur.line;
@@ -122,12 +122,12 @@ test "Chunk.basic" {
         var cnk = try Chunk.init(alloc);
         defer cnk.deinit();
 
-        var constant = try cnk.add_constant(IvyType.number(1.2));
-        var constant2 = try cnk.add_constant(IvyType.number(3));
+        const constant = try cnk.add_constant(IvyType.number(1.2));
+        const constant2 = try cnk.add_constant(IvyType.number(3));
 
         var string = try String.copy(alloc, "Hello");
         defer string.deinit(alloc);
-        var constant3 = try cnk.add_constant(IvyType.string(string));
+        const constant3 = try cnk.add_constant(IvyType.string(string));
 
         try cnk.write(@intFromEnum(OpCode.CONSTANT), 123);
         try cnk.write(@as(u8, @intCast(constant)), 123);
@@ -138,25 +138,25 @@ test "Chunk.basic" {
         try cnk.write(@as(u8, @intCast(constant3)), 124);
         try cnk.write(@intFromEnum(OpCode.RETURN), 125);
 
-        var cns1 = cnk.get_constant(0).*;
+        const cns1 = cnk.get_constant(0).*;
         try std.testing.expect(cns1.num == 1.2);
 
-        var cns2 = cnk.get_constant(1).*;
+        const cns2 = cnk.get_constant(1).*;
         try std.testing.expect(cns2.num == 3);
 
-        var op0 = try cnk.get_line_for_op(0);
+        const op0 = try cnk.get_line_for_op(0);
         try std.testing.expect(op0 == 123);
 
-        var op1 = try cnk.get_line_for_op(1);
+        const op1 = try cnk.get_line_for_op(1);
         try std.testing.expect(op1 == 123);
 
-        var op2 = try cnk.get_line_for_op(3);
+        const op2 = try cnk.get_line_for_op(3);
         try std.testing.expect(op2 == 124);
 
-        var op5 = try cnk.get_line_for_op(5);
+        const op5 = try cnk.get_line_for_op(5);
         try std.testing.expect(op5 == 124);
 
-        var op6 = try cnk.get_line_for_op(7);
+        const op6 = try cnk.get_line_for_op(7);
         try std.testing.expect(op6 == 125);
     }
 }

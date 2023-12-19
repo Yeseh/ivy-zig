@@ -78,7 +78,7 @@ pub const VirtualMachine = struct {
         try compiler.initCompiler(&comp, self.alloc, FunctionType.script, null);
 
         var parser = try Parser.init(self.alloc);
-        var compiled = try parser.compile(source);
+        const compiled = try parser.compile(source);
 
         if (compiled == null) {
             std.debug.print("\nCompilation failed\n", .{});
@@ -137,13 +137,13 @@ pub const VirtualMachine = struct {
                     var pb = self.peekStack(1);
 
                     if (pa.is_string() and pb.is_string()) {
-                        var b = self.popStack().object_as(String);
-                        var a = self.popStack().object_as(String);
-                        var str = try self.concatenate(a, b);
+                        const b = self.popStack().object_as(String);
+                        const a = self.popStack().object_as(String);
+                        const str = try self.concatenate(a, b);
                         self.pushStack(str);
                     } else if (pa.is_num() and pb.is_num()) {
-                        var nb = self.popStack().num;
-                        var na = self.popStack().num;
+                        const nb = self.popStack().num;
+                        const na = self.popStack().num;
                         self.pushStack(IvyType.number(na + nb));
                     } else {
                         try self.rt_error("Operands must be two numbers or two strings.", .{});
@@ -157,16 +157,16 @@ pub const VirtualMachine = struct {
                 .LESS => try self.binary_operation(instruction),
                 .GREATER => try self.binary_operation(instruction),
                 .GET_LOCAL => {
-                    var slot = self.read_byte(frame);
+                    const slot = self.read_byte(frame);
                     self.pushStack(frame.slots[slot]);
                 },
                 .SET_LOCAL => {
-                    var slot = self.read_byte(frame);
+                    const slot = self.read_byte(frame);
                     frame.slots[slot] = self.peekStack(0);
                 },
                 .DEFINE_GLOBAL => {
                     var name = self.read_constant(frame).object_as(String);
-                    var isSet = try globals.set(name, self.peekStack(0));
+                    const isSet = try globals.set(name, self.peekStack(0));
                     if (!isSet) {
                         try self.rt_error("Redefining existing variable '{s}'.", .{name.asSlice()});
                     }
@@ -174,7 +174,7 @@ pub const VirtualMachine = struct {
                 },
                 .GET_GLOBAL => {
                     var name = self.read_constant(frame).object_as(String);
-                    var global = globals.get(name);
+                    const global = globals.get(name);
                     if (global == null) {
                         try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
                     }
@@ -182,7 +182,7 @@ pub const VirtualMachine = struct {
                 },
                 .SET_GLOBAL => {
                     var name = self.read_constant(frame).object_as(String);
-                    var set = try globals.set(name, self.peekStack(0));
+                    const set = try globals.set(name, self.peekStack(0));
                     if (set) {
                         _ = globals.delete(name);
                         // NOTE: No implicit variable declaration!
@@ -190,41 +190,41 @@ pub const VirtualMachine = struct {
                     }
                 },
                 .JUMP => {
-                    var offset = self.read_short(frame);
+                    const offset = self.read_short(frame);
                     frame.ip += offset;
                 },
                 .JUMP_IF_FALSE => {
-                    var offset = self.read_short(frame);
+                    const offset = self.read_short(frame);
                     if (self.is_falsey(self.peekStack(0))) {
                         frame.ip += offset;
                     }
                 },
                 // TODO: implement loop as JUMP
                 .LOOP => {
-                    var offset = self.read_short(frame);
+                    const offset = self.read_short(frame);
                     frame.ip -= offset;
                 },
                 .POP => {
                     _ = self.popStack();
                 },
                 .CALL => {
-                    var argCount = self.read_byte(frame);
-                    var peek = self.peekStack(argCount);
-                    var called = try self.callValue(peek, argCount);
+                    const argCount = self.read_byte(frame);
+                    const peek = self.peekStack(argCount);
+                    const called = try self.callValue(peek, argCount);
                     if (!called) {
                         return InterpreterError.RuntimeError;
                     }
                     frame = self.frames.cur();
                 },
                 .POP_N => {
-                    var n = self.read_byte(frame);
+                    const n = self.read_byte(frame);
                     var i: usize = 0;
                     while (i < n) : (i += 1) {
                         _ = self.popStack();
                     }
                 },
                 .RETURN => {
-                    var result = self.popStack();
+                    const result = self.popStack();
                     self.frames.count -= 1;
 
                     if (self.frames.count == 0) {
@@ -232,7 +232,7 @@ pub const VirtualMachine = struct {
                         return;
                     }
                     // Discard CallFrame
-                    var dif = self.stack.count - stackCount;
+                    const dif = self.stack.count - stackCount;
                     self.stack.count -= dif;
 
                     self.pushStack(result);
@@ -244,14 +244,14 @@ pub const VirtualMachine = struct {
     }
 
     pub fn concatenate(self: *Self, a: *String, b: *String) !IvyType {
-        var capacity = a._len + b._len + 1;
+        const capacity = a._len + b._len + 1;
         var buf = try self.alloc.alloc(u8, capacity);
         errdefer self.alloc.free(buf);
 
         // TODO: move all this to fn under String for neatness
         @memcpy(buf[0..a._len], a._buf[0..a._len]);
         @memcpy(buf[a._len .. a._len + b._len + 1], b._buf[0 .. b._len + 1]);
-        var str = try String.createInterned(self.alloc, buf, &strings);
+        const str = try String.createInterned(self.alloc, buf, &strings);
         return IvyType.string(str);
     }
 
@@ -262,10 +262,10 @@ pub const VirtualMachine = struct {
                     return try self.call(callee.object_as(types.Function), argCount);
                 },
                 .NativeFunction => {
-                    var native = callee.object_as(types.NativeFunction).fun;
-                    var argStart = self.stack.count - argCount;
-                    var args = self.stack.slice[argStart..self.stack.count];
-                    var result = native(args);
+                    const native = callee.object_as(types.NativeFunction).fun;
+                    const argStart = self.stack.count - argCount;
+                    const args = self.stack.slice[argStart..self.stack.count];
+                    const result = native(args);
                     // Discard native function and arguments
                     self.stack.count -= argCount + 1;
                     self.pushStack(result);
@@ -293,7 +293,7 @@ pub const VirtualMachine = struct {
         self.frames.count += 1;
         frame.function = fun;
         frame.ip = fun.chunk.get_op_ptr();
-        var frameStart = self.stack.count - argc - 1;
+        const frameStart = self.stack.count - argc - 1;
         frame.slots = self.stack.slice[frameStart..];
 
         return true;
@@ -301,13 +301,13 @@ pub const VirtualMachine = struct {
 
     pub fn defineNative(self: *Self, name: []const u8, fun: types.NativeFn) !void {
         var str = try String.copyInterned(self.alloc, name, &strings);
-        var native = try types.NativeFunction.create(self.alloc, fun);
-        var nfnType = IvyType.nativefn(native);
+        const native = try types.NativeFunction.create(self.alloc, fun);
+        const nfnType = IvyType.nativefn(native);
 
         self.pushStack(IvyType.string(str));
         self.pushStack(nfnType);
 
-        var isSet = try globals.set(str, nfnType);
+        const isSet = try globals.set(str, nfnType);
         _ = self.popStack();
         _ = self.popStack();
 
@@ -335,7 +335,7 @@ pub const VirtualMachine = struct {
             const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr()) - 1;
             const line = try frame.function.chunk.get_line_for_op(instruction);
 
-            var function = frame.function;
+            const function = frame.function;
             var name = function.name;
             std.debug.print("\n[line {}] ", .{line});
             if (name == null) {
@@ -392,10 +392,10 @@ pub const VirtualMachine = struct {
 
     fn read_short(self: *Self, frame: *CallFrame) u16 {
         _ = self;
-        var ptr = frame.*.ip;
+        const ptr = frame.*.ip;
         frame.ip += 2;
-        var highBits: u16 = @as(u16, @intCast(ptr[0])) << @intCast(8);
-        var lowBits: u16 = @intCast(ptr[1]);
+        const highBits: u16 = @as(u16, @intCast(ptr[0])) << @intCast(8);
+        const lowBits: u16 = @intCast(ptr[1]);
         return highBits | lowBits;
     }
 

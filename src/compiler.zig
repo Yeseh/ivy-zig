@@ -52,7 +52,7 @@ pub fn initCompiler(comp: *Compiler, alloc: std.mem.Allocator, ty: FunctionType,
     comp.enclosing = current;
 
     if (ty != .script and name != null) {
-        var fnName = try String.copyInterned(alloc, name.?.lex, &vm.strings);
+        const fnName = try String.copyInterned(alloc, name.?.lex, &vm.strings);
         comp.function.name = fnName;
     }
     var local = &comp.locals[@intCast(comp.localCount)];
@@ -94,7 +94,7 @@ pub const Parser = struct {
     rules: [TOKEN_COUNT]ParseRule,
 
     pub fn init(alloc: std.mem.Allocator) !Parser {
-        var parser = Parser{
+        const parser = Parser{
             .cur = undefined,
             .prev = undefined,
             .scan = undefined,
@@ -194,7 +194,7 @@ pub const Parser = struct {
     }
 
     fn get_rule(self: *Self, tt: TokenType) *ParseRule {
-        var rule = &self.rules[@intFromEnum(tt)];
+        const rule = &self.rules[@intFromEnum(tt)];
         return rule;
     }
 
@@ -207,9 +207,9 @@ pub const Parser = struct {
             self.declaration();
         }
 
-        var fun = try self.end();
+        const fun = try self.end();
 
-        var retVal = if (self.had_error) null else fun;
+        const retVal = if (self.had_error) null else fun;
         return retVal;
     }
 
@@ -228,7 +228,7 @@ pub const Parser = struct {
     }
 
     fn varDeclaration(self: *Self) void {
-        var global = self.parseVariable(.expect_variable_name);
+        const global = self.parseVariable(.expect_variable_name);
 
         if (self.match(.EQUAL)) {
             self.expression();
@@ -241,7 +241,7 @@ pub const Parser = struct {
     }
 
     fn constDeclaration(self: *Self) void {
-        var global = self.parseVariable(.expect_variable_name);
+        const global = self.parseVariable(.expect_variable_name);
 
         self.eat(.EQUAL, .expect_eq_after_variable_name);
         self.expression();
@@ -284,12 +284,12 @@ pub const Parser = struct {
     // TODO: Implement continue, break
     // TODO: Implement switch
     fn whileStatement(self: *Self) void {
-        var loopStart = self.currentChunk().code.items.len;
+        const loopStart = self.currentChunk().code.items.len;
         self.eat(.LPAREN, .expect_lparen_after_while);
         self.expression();
         self.eat(.RPAREN, .expect_rparen_after_condition);
 
-        var exitJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        const exitJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
         self.emit_op(.POP);
         self.statement();
         self.emitLoop(loopStart);
@@ -321,8 +321,8 @@ pub const Parser = struct {
         }
 
         if (!self.match(.RPAREN)) {
-            var bodyJump = self.emitJump(@intFromEnum(OpCode.JUMP));
-            var incrementStart = self.currentChunk().code.items.len;
+            const bodyJump = self.emitJump(@intFromEnum(OpCode.JUMP));
+            const incrementStart = self.currentChunk().code.items.len;
             self.expression();
             self.emit_op(.POP);
             self.eat(.RPAREN, .expect_rparen_after_for_clauses);
@@ -354,10 +354,10 @@ pub const Parser = struct {
         self.expression();
         self.eat(.RPAREN, .expect_rparen_after_condition);
 
-        var thenJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        const thenJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
         self.emit_op(.POP);
         self.statement();
-        var elseJump = self.emitJump(@intFromEnum(OpCode.JUMP));
+        const elseJump = self.emitJump(@intFromEnum(OpCode.JUMP));
 
         self.patchJump(thenJump);
         self.emit_op(.POP);
@@ -392,7 +392,7 @@ pub const Parser = struct {
                     self.err(.too_many_parameters);
                 }
 
-                var paramConstant = self.parseVariable(.expect_parameter_name);
+                const paramConstant = self.parseVariable(.expect_parameter_name);
                 self.defineVariable(paramConstant);
 
                 if (!self.match(.COMMA)) {
@@ -404,17 +404,17 @@ pub const Parser = struct {
         self.eat(.LBRACE, .expect_lbrace_before_function_body);
         self.block();
 
-        var fun = self.end() catch {
+        const fun = self.end() catch {
             self.err(.failed_to_end_function_compilation);
             return;
         };
-        var funType = IvyType.function(fun);
-        var constant = self.makeConstant(funType);
+        const funType = IvyType.function(fun);
+        const constant = self.makeConstant(funType);
         self.emit_ops(.CONSTANT, @enumFromInt(constant));
     }
 
     fn fnDeclaration(self: *Self) void {
-        var global = self.parseVariable(.expect_function_identifier);
+        const global = self.parseVariable(.expect_function_identifier);
         self.markInitialized();
         self.function(.function);
         self.defineVariable(global);
@@ -464,17 +464,17 @@ pub const Parser = struct {
     fn parsePrecedence(self: *Self, pres: Precedence) void {
         self.advance();
 
-        var prefix = self.get_rule(self.prev.type).prefix orelse {
+        const prefix = self.get_rule(self.prev.type).prefix orelse {
             self.err(.expect_expression);
             return;
         };
 
-        var canAssign = @intFromEnum(pres) <= @intFromEnum(Precedence.ASSIGNMENT);
+        const canAssign = @intFromEnum(pres) <= @intFromEnum(Precedence.ASSIGNMENT);
         prefix(self, canAssign);
 
         while (@intFromEnum(pres) <= @intFromEnum(self.get_rule(self.cur.type).precedence)) {
             self.advance();
-            var infix = self.get_rule(self.prev.type).infix orelse {
+            const infix = self.get_rule(self.prev.type).infix orelse {
                 unreachable;
             };
             infix(self, canAssign);
@@ -517,7 +517,7 @@ pub const Parser = struct {
                 if (local.depth == -1) {
                     self.err(.cannot_read_local_variable_in_initializer);
                 }
-                var index: i32 = @intCast(i);
+                const index: i32 = @intCast(i);
                 return index;
             }
         }
@@ -566,8 +566,8 @@ pub const Parser = struct {
         if (current.?.scopeDepth == 0) {
             return;
         }
-        var idx = current.?.localCount - 1;
-        var sd = current.?.scopeDepth;
+        const idx = current.?.localCount - 1;
+        const sd = current.?.scopeDepth;
         var local = &current.?.locals[@intCast(idx)];
         local.depth = sd;
     }
@@ -577,7 +577,7 @@ pub const Parser = struct {
             return;
         }
 
-        var name = &self.prev;
+        const name = &self.prev;
         var idx = current.?.localCount;
         while (idx > 0) {
             idx -= 1;
@@ -595,11 +595,11 @@ pub const Parser = struct {
     }
 
     fn identifierConstant(self: *Self, name: *Token) u8 {
-        var str = String.copyInterned(self.alloc, name.*.lex, &vm.strings) catch {
+        const str = String.copyInterned(self.alloc, name.*.lex, &vm.strings) catch {
             self.err_at_cur(.out_of_memory);
             return 0;
         };
-        var obj = IvyType.string(str);
+        const obj = IvyType.string(str);
         return self.makeConstant(obj);
     }
 
@@ -612,7 +612,7 @@ pub const Parser = struct {
 
     fn _and(self: *Self, canAssign: bool) void {
         _ = canAssign;
-        var endJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        const endJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
         self.emit_op(.POP);
         self.parsePrecedence(.AND);
         self.patchJump(endJump);
@@ -620,8 +620,8 @@ pub const Parser = struct {
 
     fn _or(self: *Self, canAssign: bool) void {
         _ = canAssign;
-        var elseJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
-        var endJump = self.emitJump(@intFromEnum(OpCode.JUMP));
+        const elseJump = self.emitJump(@intFromEnum(OpCode.JUMP_IF_FALSE));
+        const endJump = self.emitJump(@intFromEnum(OpCode.JUMP));
 
         self.patchJump(elseJump);
         self.emit_op(.POP);
@@ -632,11 +632,11 @@ pub const Parser = struct {
 
     fn number(self: *Self, canAssign: bool) void {
         _ = canAssign;
-        var value = std.fmt.parseFloat(f64, self.prev.lex) catch {
+        const value = std.fmt.parseFloat(f64, self.prev.lex) catch {
             return;
         };
 
-        var num = IvyType.number(value);
+        const num = IvyType.number(value);
         self.emit_constant(num);
     }
 
@@ -658,9 +658,9 @@ pub const Parser = struct {
 
     fn binary(self: *Self, canAssign: bool) void {
         _ = canAssign;
-        var op_type = self.prev.type;
-        var rule = self.get_rule(op_type);
-        var pres = @intFromEnum(rule.precedence) + 1;
+        const op_type = self.prev.type;
+        const rule = self.get_rule(op_type);
+        const pres = @intFromEnum(rule.precedence) + 1;
         self.parsePrecedence(@as(Precedence, @enumFromInt(pres)));
 
         switch (op_type) {
@@ -681,13 +681,13 @@ pub const Parser = struct {
 
     fn call(self: *Self, canAssign: bool) void {
         _ = canAssign;
-        var argCount = self.argumentList();
+        const argCount = self.argumentList();
         self.emit_ops(.CALL, @enumFromInt(argCount));
     }
 
     fn unary(self: *Self, canAssign: bool) void {
         _ = canAssign;
-        var op_type = self.prev.type;
+        const op_type = self.prev.type;
         self.parsePrecedence(.UNARY);
 
         switch (op_type) {
@@ -710,7 +710,7 @@ pub const Parser = struct {
     }
 
     fn makeConstant(self: *Self, value: IvyType) u8 {
-        var constant = self.currentChunk().add_constant(value) catch {
+        const constant = self.currentChunk().add_constant(value) catch {
             self.err(.out_of_memory);
             return 0;
         };
@@ -806,7 +806,7 @@ pub const Parser = struct {
     fn emitLoop(self: *Self, start: usize) void {
         self.emit_op(.LOOP);
 
-        var offset = self.currentChunk().code.items.len - start + 2;
+        const offset = self.currentChunk().code.items.len - start + 2;
         if (offset > U16Max) {
             self.err(.loop_body_too_large);
         }
@@ -816,7 +816,7 @@ pub const Parser = struct {
     }
 
     fn patchJump(self: *Self, offset: u32) void {
-        var jump = self.currentChunk().code.items.len - offset - 2;
+        const jump = self.currentChunk().code.items.len - offset - 2;
         if (jump > U16Max) {
             self.err(.jump_too_large);
         }

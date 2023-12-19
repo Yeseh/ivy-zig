@@ -71,38 +71,3 @@ fn run_file(alloc: std.mem.Allocator, vm: *VM, path: []const u8) !void {
 
     try vm.interpret(buf[0..buf.len :0]);
 }
-
-// test "Ivy.arith" {
-//     std.debug.print("\n", .{});
-//     const a = std.testing.allocator;
-//     try testing.runVm(a, "1 + 2", .{ .ok = IvyType.number(3) });
-//     try testing.runVm(a, "1 - 2", .{ .ok = IvyType.number(-1) });
-//     try testing.runVm(a, "1 - -2", .{ .ok = IvyType.number(3) });
-//     try testing.runVm(a, "2 * (1 - -2)", .{ .ok = IvyType.number(6) });
-//     try testing.runVm(a, "(-1 + (2 * 4)) * 3 - -4", .{ .ok = IvyType.number(25) });
-// }
-
-// test "Ivy.booleans" {
-//     std.debug.print("\n", .{});
-//     const a = std.testing.allocator;
-
-//     try testing.runVm(a, "true", .{ .ok = IvyType.boolean(true) });
-//     try testing.runVm(a, "!true", .{ .ok = IvyType.boolean(false) });
-//     try testing.runVm(a, "5>4", .{ .ok = IvyType.boolean(true) });
-//     try testing.runVm(a, "3>4", .{ .ok = IvyType.boolean(false) });
-//     try testing.runVm(a, "3<4", .{ .ok = IvyType.boolean(true) });
-//     try testing.runVm(a, "5<4", .{ .ok = IvyType.boolean(false) });
-//     try testing.runVm(a, "5==4", .{ .ok = IvyType.boolean(false) });
-//     try testing.runVm(a, "5==5", .{ .ok = IvyType.boolean(true) });
-// }
-
-// test "Ivy.strings" {
-//     std.debug.print("\n", .{});
-//     const a = std.testing.allocator;
-
-//     var str1 = try String.copy(a, "string");
-//     try testing.runVm(a, "\"string\"", .{ .ok = IvyType.string(str1) });
-
-//     var str2 = try String.copy(a, "Hello, World!");
-//     try testing.runVm(a, "\"Hello, \" + \"World!\"", .{ .ok = IvyType.string(str2) });
-// }

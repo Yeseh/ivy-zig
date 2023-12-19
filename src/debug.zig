@@ -91,7 +91,7 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
 }
 
 pub fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
-    var slot = chunk.get_op(offset + 1);
+    const slot = chunk.get_op(offset + 1);
     std.debug.print("{s} {d}\n", .{ name, slot });
     return offset + 2;
 }
@@ -99,8 +99,8 @@ pub fn byteInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
 pub fn jumpInstruction(name: []const u8, sign: i8, chunk: *Chunk, offset: usize) usize {
     var jump: u16 = @as(u16, @intCast(chunk.get_op(offset + 1))) << 8;
     jump |= chunk.get_op(offset + 2);
-    var offsetIncr = @as(i32, @intCast(offset)) + 3;
-    var signedJump = @as(i32, @intCast(jump)) * sign;
+    const offsetIncr = @as(i32, @intCast(offset)) + 3;
+    const signedJump = @as(i32, @intCast(jump)) * sign;
 
     std.debug.print("{s} {d} -> {d}\n", .{ name, offset, offsetIncr + signedJump });
     return offset + 3;
@@ -112,7 +112,7 @@ pub fn simpleInstruction(name: []const u8, offset: usize) usize {
 }
 
 pub fn constantInstruction(name: []const u8, chunk: *Chunk, offset: usize) usize {
-    var constant = chunk.get_op(offset + 1);
+    const constant = chunk.get_op(offset + 1);
     var ty = chunk.get_constant(constant).*;
 
     std.debug.print("{s} {d} ", .{ name, constant });
