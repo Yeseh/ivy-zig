@@ -33,7 +33,7 @@ var frames: [FRAMES_MAX]CallFrame = undefined;
 pub const CallFrame = struct {
     const Self = @This();
 
-    function: *types.Function,
+    closure: *types.Closure,
     ip: [*]u8,
     slots: []IvyType,
 };
@@ -86,8 +86,11 @@ pub const VirtualMachine = struct {
         }
 
         self.pushStack(IvyType.function(compiled.?));
-        _ = try self.call(compiled.?, 0);
+        const closure = try types.Closure.init(self.alloc, compiled.?);
+        _ = self.popStack();
+        self.pushStack(IvyType.closure(closure));
 
+        _ = try self.call(closure, 0);
         try self.run();
     }
 
@@ -98,8 +101,8 @@ pub const VirtualMachine = struct {
         while (true) {
             if (common.DEBUG_PRINT_CODE) {
                 debug.dump_stack(self);
-                const offset = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr());
-                _ = debug.disassemble_instruction(&frame.function.chunk, offset) catch |err| {
+                const offset = @intFromPtr(frame.ip) - @intFromPtr(frame.closure.fun.chunk.get_op_ptr());
+                _ = debug.disassemble_instruction(&frame.closure.fun.chunk, offset) catch |err| {
                     std.debug.print("{any}\n", .{err});
                     return InterpreterError.RuntimeError;
                 };
@@ -189,6 +192,16 @@ pub const VirtualMachine = struct {
                         try self.rt_error("Undefined variable '{s}'.", .{name.asSlice()});
                     }
                 },
+                .GET_UPVALUE => {
+                    const slot = self.read_byte(frame);
+                    const upvalue = frame.closure.upvalues[slot];
+                    self.pushStack(upvalue.?.loc.*);
+                },
+                .SET_UPVALUE => {
+                    const slot = self.read_byte(frame);
+                    const peek = self.peekStack(0);
+                    frame.closure.upvalues[slot].?.loc.* = peek;
+                },
                 .JUMP => {
                     const offset = self.read_short(frame);
                     frame.ip += offset;
@@ -221,6 +234,24 @@ pub const VirtualMachine = struct {
                     var i: usize = 0;
                     while (i < n) : (i += 1) {
                         _ = self.popStack();
+                    }
+                },
+                .CLOSURE => {
+                    const function = self.read_constant(frame).object_as(types.Function);
+                    const closure = try types.Closure.init(self.alloc, function);
+                    self.pushStack(IvyType.closure(closure));
+
+                    std.debug.print("upvalues {}\n", .{closure.upvalueCount});
+                    for (0..closure.upvalueCount) |i| {
+                        std.debug.print("upvalue {d}\n", .{i});
+                        const isLocal = self.read_byte(frame) == 1;
+                        const index = self.read_byte(frame);
+                        if (isLocal) {
+                            const uv = try self.captureUpvalue(&frame.slots[index]);
+                            closure.upvalues[i] = uv;
+                        } else {
+                            closure.upvalues[i] = frame.closure.upvalues[index];
+                        }
                     }
                 },
                 .RETURN => {
@@ -258,8 +289,8 @@ pub const VirtualMachine = struct {
     fn callValue(self: *Self, callee: IvyType, argCount: u8) !bool {
         if (callee.is_obj()) {
             switch (callee.object.ty) {
-                .Function => {
-                    return try self.call(callee.object_as(types.Function), argCount);
+                .Closure => {
+                    return try self.call(callee.object_as(types.Closure), argCount);
                 },
                 .NativeFunction => {
                     const native = callee.object_as(types.NativeFunction).fun;
@@ -278,9 +309,14 @@ pub const VirtualMachine = struct {
         return false;
     }
 
-    fn call(self: *Self, fun: *types.Function, argc: u8) !bool {
-        if (argc != fun.arity) {
-            try self.rt_error("Expected {} arguments but got {}.", .{ fun.arity, argc });
+    fn captureUpvalue(self: *Self, local: *IvyType) !*types.Upvalue {
+        const createdUpvalue = try types.Upvalue.init(self.alloc, local);
+        return createdUpvalue;
+    }
+
+    fn call(self: *Self, c: *types.Closure, argc: u8) !bool {
+        if (argc != c.fun.arity) {
+            try self.rt_error("Expected {} arguments but got {}.", .{ c.fun.arity, argc });
             return false;
         }
         if (self.frameCount == FRAMES_MAX) {
@@ -291,8 +327,8 @@ pub const VirtualMachine = struct {
         var frame = self.frames.top();
 
         self.frames.count += 1;
-        frame.function = fun;
-        frame.ip = fun.chunk.get_op_ptr();
+        frame.closure = c;
+        frame.ip = c.fun.chunk.get_op_ptr();
         const frameStart = self.stack.count - argc - 1;
         frame.slots = self.stack.slice[frameStart..];
 
@@ -332,10 +368,10 @@ pub const VirtualMachine = struct {
             i -= 1;
             var frame = &self.frames.at(i);
 
-            const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.function.chunk.get_op_ptr()) - 1;
-            const line = try frame.function.chunk.get_line_for_op(instruction);
+            const instruction = @intFromPtr(frame.ip) - @intFromPtr(frame.closure.fun.chunk.get_op_ptr()) - 1;
+            const line = try frame.closure.fun.chunk.get_line_for_op(instruction);
 
-            const function = frame.function;
+            const function = frame.closure.fun;
             var name = function.name;
             std.debug.print("\n[line {}] ", .{line});
             if (name == null) {
@@ -407,6 +443,6 @@ pub const VirtualMachine = struct {
     }
 
     fn read_constant(self: *Self, frame: *CallFrame) IvyType {
-        return frame.function.chunk.constants.items[self.read_byte(frame)];
+        return frame.closure.fun.chunk.constants.items[self.read_byte(frame)];
     }
 };

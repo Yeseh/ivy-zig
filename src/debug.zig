@@ -1,5 +1,6 @@
 const std = @import("std");
 const common = @import("common.zig");
+const types = @import("types.zig");
 const VM = @import("vm.zig").VirtualMachine;
 
 const Chunk = common.Chunk;
@@ -33,8 +34,7 @@ pub fn dump_stack(vm: *VM) void {
             .object => |obj| {
                 switch (obj.ty) {
                     .String => std.debug.print("        | [ string ", .{}),
-                    .Function => std.debug.print("        | [ ", .{}),
-                    .NativeFunction => std.debug.print("        | [ ", .{}),
+                    else => std.debug.print("        | [ ", .{}),
                 }
             },
             else => std.debug.print("        | [ {s} ", .{@tagName(item)}),
@@ -82,6 +82,28 @@ pub fn disassemble_instruction(chunk: *Chunk, offset: usize) ChunkError!usize {
         .JUMP => jumpInstruction("JUMP", 1, chunk, offset),
         .JUMP_IF_FALSE => jumpInstruction("JUMP_IF_FALSE", 1, chunk, offset),
         .CALL => byteInstruction("CALL", chunk, offset),
+        .GET_UPVALUE => byteInstruction("GET_UPVALUE", chunk, offset),
+        .SET_UPVALUE => byteInstruction("SET_UPVALUE", chunk, offset),
+        .CLOSURE => {
+            var o = offset;
+            o += 1;
+            const constant = chunk.get_op(o);
+            o += 1;
+            std.debug.print("{s} {d} ", .{ "CLOSURE", constant });
+            const value = chunk.get_constant(constant);
+            value.print();
+            std.debug.print("\n", .{});
+
+            const fun = chunk.constants.items[constant].object_as(types.Function);
+            for (0..fun.upvalueCount) |_| {
+                o += 1;
+                const is_local = chunk.get_op(o);
+                o += 1;
+                const index = chunk.get_op(o);
+                std.debug.print("{d:0>4}    | is_local: {s}, index: {d}\n", .{ o - 2, if (is_local == 1) "local" else "upvalue", index });
+            }
+            return o;
+        },
         //else => {
         //    std.debug.print("Unknown opcode {}\n", .{instruction});
         //    return offset + 1;

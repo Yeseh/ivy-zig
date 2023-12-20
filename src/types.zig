@@ -8,11 +8,7 @@ const Table = common.Table;
 const Chunk = common.Chunk;
 pub const NativeFn = *const fn ([]IvyType) IvyType;
 
-pub const ObjectType = enum(u8) {
-    String,
-    Function,
-    NativeFunction,
-};
+pub const ObjectType = enum(u8) { String, Function, NativeFunction, Closure, Upvalue };
 
 /// This is a generic object type. It is used to represent all objects in Ivy.
 /// It is based on struct inheritance in accordance with the book.
@@ -25,6 +21,54 @@ pub const Object = extern struct {
 
     pub fn as(self: *Self, comptime T: type) *T {
         return @ptrCast(@alignCast(self));
+    }
+};
+
+pub const Closure = struct {
+    const Self = @This();
+
+    obj: Object,
+    fun: *Function,
+    upvalues: []?*Upvalue,
+    upvalueCount: u32,
+
+    pub fn init(alloc: std.mem.Allocator, fun: *Function) !*Closure {
+        var upvalues = try alloc.alloc(?*Upvalue, fun.upvalueCount);
+        for (0..fun.upvalueCount) |i| {
+            upvalues[i] = null;
+        }
+
+        var c = try alloc.create(Closure);
+        c.obj.ty = ObjectType.Closure;
+        c.fun = fun;
+        c.upvalues = upvalues;
+        c.upvalueCount = fun.upvalueCount;
+        garbage.mark(@ptrCast(@alignCast(c)));
+        return c;
+    }
+
+    pub fn deinit(c: *Closure, alloc: std.mem.Allocator) void {
+        c.fun = undefined;
+        alloc.free(c.upvalues);
+        alloc.destroy(c);
+    }
+};
+
+pub const Upvalue = struct {
+    obj: Object,
+    loc: *IvyType,
+
+    pub fn init(alloc: std.mem.Allocator, slot: *IvyType) !*Upvalue {
+        var uv = try alloc.create(Upvalue);
+        uv.obj.ty = ObjectType.Upvalue;
+        uv.loc = slot;
+        garbage.mark(@ptrCast(@alignCast(uv)));
+        return uv;
+    }
+
+    pub fn deinit(uv: *Upvalue, alloc: std.mem.Allocator) void {
+        uv.loc = undefined;
+        alloc.destroy(uv);
     }
 };
 
@@ -51,15 +95,17 @@ pub const Function = struct {
     const Self = @This();
 
     _obj: Object,
-    arity: i8,
+    arity: i8 = 0,
+    name: ?*String = null,
+    upvalueCount: u32 = 0,
     chunk: Chunk,
-    name: ?*String,
 
     pub fn create(alloc: std.mem.Allocator) !*Function {
         var fun = try alloc.create(Self);
         fun._obj.ty = ObjectType.Function;
         fun.arity = 0;
         fun.name = null;
+        fun.upvalueCount = 0;
         fun.chunk = try Chunk.init(alloc);
         garbage.mark(@ptrCast(@alignCast(fun)));
         return fun;
@@ -277,6 +323,10 @@ pub const IvyType = union(enum) {
         return Self{ .num = n };
     }
 
+    pub fn closure(cls: *Closure) Self {
+        return Self{ .object = @ptrCast(@alignCast(cls)) };
+    }
+
     pub fn string(str: *String) Self {
         return Self{ .object = @ptrCast(@alignCast(str)) };
     }
@@ -300,12 +350,15 @@ pub const IvyType = union(enum) {
                     .String => std.debug.print("{s}", .{self.object_as(String).asSlice()}),
                     .Function => {
                         var fun = self.object_as(Function);
-                        if (fun.name != null)
-                            std.debug.print("<fn {s}>", .{fun.getName()})
-                        else
-                            std.debug.print("<script>", .{});
+                        std.debug.print("<fn {s}>", .{fun.getName()});
                     },
                     .NativeFunction => std.debug.print("<native fn>", .{}),
+                    .Closure => {
+                        var c = self.object_as(Closure);
+                        std.debug.print("closure ", .{});
+                        std.debug.print("<fn {s}>", .{c.fun.getName()});
+                    },
+                    .Upvalue => std.debug.print("upvalue", .{}),
                 }
             },
         }

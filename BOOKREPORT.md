@@ -40,13 +40,15 @@ To summarize what I've learnt in this project:
 - String / Object implementation took a while, really ran into a lot of segfaults/mem leaks in this part.
     - Mostly came down to using a different allocator, ArenaAllocator doesn't work like malloc/free.
     - Null termination also works very differently in Zig compared to C. It is baked into the type system, so getting this right was very difficult.
+    - Not reading over the primitive garbage collector implemented in the strings chapter would also have helped a lot.
+- It is idiomatic in Zig to use way fewer pointers than C. This leads to some translation issues every now and then.
 
 ## Quick primer on zig
 
 ### General
 - A modern take on C, IE not 50 years old
     - Very similar level of abstraction from the machine
-    - Translating C to zig works pretty well with a bit of work, it is not really idiomatic to write zig that way.
+    - Translating C to zig works pretty well with a bit of work, but it is not really idiomatic to write zig that way.
     - For example: you can use many-item pointers but this is not really idiomatic, I've done this in a couple of places to be closer to the book implementation while I was figuring things out.
     - Table.zig is a good example of a more idiomatic zig solution (afaik) using unions
 

@@ -4,10 +4,10 @@ pub const IvyType = @import("types.zig").IvyType;
 pub const Table = @import("table.zig");
 
 // TODO: Should be cmdline flags
-pub const DEBUG_PRINT_CODE = false;
-pub const DEBUG_PRINT_RETURN = false;
-pub const DEBUG_PRINT_GC = false;
-pub const DEBUG_PRINT_SOURCE = false;
+pub const DEBUG_PRINT_CODE = true;
+pub const DEBUG_PRINT_RETURN = true;
+pub const DEBUG_PRINT_GC = true;
+pub const DEBUG_PRINT_SOURCE = true;
 
 pub const RuntimeError = error{IndexOutOfBounds};
 
@@ -34,10 +34,13 @@ pub const OpCode = enum(u8) {
     DEFINE_GLOBAL,
     GET_GLOBAL,
     SET_GLOBAL,
+    GET_UPVALUE,
+    SET_UPVALUE,
     LOOP,
     JUMP,
     JUMP_IF_FALSE,
     CALL,
+    CLOSURE,
     // TODO: INCREMENT and DECREMENT
     // INCREMENT,
 };

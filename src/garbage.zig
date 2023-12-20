@@ -51,7 +51,22 @@ pub fn free(alloc: std.mem.Allocator) void {
                 func.deinit(alloc);
                 count += 1;
             },
-            // else => {},
+            .Closure => {
+                var closure = obj.?.as(types.Closure);
+                if (common.DEBUG_PRINT_GC) {
+                    std.debug.print("GC: Closure\n", .{});
+                }
+                closure.deinit(alloc);
+                count += 1;
+            },
+            .Upvalue => {
+                var uv = obj.?.as(types.Upvalue);
+                if (common.DEBUG_PRINT_GC) {
+                    std.debug.print("GC: Upvalue\n", .{});
+                }
+                uv.deinit(alloc);
+                count += 1;
+            },
         }
         obj = next;
     }

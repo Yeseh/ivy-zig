@@ -7,9 +7,6 @@ const String = types.String;
 //       Not sure if that comes at a major performance cost. It's probably fine, and the API is more explicit.
 //       The union approach feels very nice to use, but it's not clear if it's worth it.
 //       Lets try this more expressive ziggy way first.
-// TODO: Reimplement pointer api
-// TODO: Benchmark handle vs pointer based api during optimization
-// TODO: Try to use the 'encoding' strategy (DoD) for entry cache optimalization
 // TODO: research chained scatter table with Brent’s variation [3] (from LUA paper)
 
 pub const Table = @This();

@@ -71,8 +71,14 @@ pub const Compiler = struct {
     function: *Function,
     type: FunctionType,
     locals: [LOCAL_COUNT]Local,
+    upvalues: [LOCAL_COUNT]Upvalue,
     localCount: i32,
     scopeDepth: i32,
+};
+
+pub const Upvalue = struct {
+    isLocal: bool,
+    index: u8,
 };
 
 pub const ParseRule = struct {
@@ -410,7 +416,15 @@ pub const Parser = struct {
         };
         const funType = IvyType.function(fun);
         const constant = self.makeConstant(funType);
-        self.emit_ops(.CONSTANT, @enumFromInt(constant));
+        self.emit_bytes(@intFromEnum(OpCode.CLOSURE), constant);
+
+        std.debug.print("upvaluecount: {}", .{fun.upvalueCount});
+
+        for (0..fun.upvalueCount) |i| {
+            const uv = fnComp.upvalues[i];
+            self.emit_byte(@intFromBool(uv.isLocal));
+            self.emit_byte(uv.index);
+        }
     }
 
     fn fnDeclaration(self: *Self) void {
@@ -490,10 +504,18 @@ pub const Parser = struct {
     }
 
     fn namedVariable(self: *Self, name: *Token, canAssign: bool) void {
+        std.debug.print("Named variable\n", .{});
         var setOp = OpCode.SET_LOCAL;
         var getOp = OpCode.GET_LOCAL;
 
-        var arg = self.resolveLocal(name);
+        var arg = self.resolveLocal(current.?, name);
+        // Not a local
+        if (arg == -1) {
+            arg = self.resolveUpvalue(current.?, name);
+            setOp = .SET_UPVALUE;
+            getOp = .GET_UPVALUE;
+        }
+        // Not an upvalue
         if (arg == -1) {
             arg = self.identifierConstant(name);
             setOp = .SET_GLOBAL;
@@ -509,10 +531,10 @@ pub const Parser = struct {
         self.emit_ops(getOp, @enumFromInt(arg));
     }
 
-    fn resolveLocal(self: *Self, name: *Token) i32 {
-        var i = current.?.localCount - 1;
+    fn resolveLocal(self: *Self, compiler: *Compiler, name: *Token) i32 {
+        var i = compiler.localCount - 1;
         while (i >= 0) : (i -= 1) {
-            var local = &current.?.locals[@intCast(i)];
+            var local = &compiler.locals[@intCast(i)];
             if (identifiersEql(name, &local.name)) {
                 if (local.depth == -1) {
                     self.err(.cannot_read_local_variable_in_initializer);
@@ -520,6 +542,46 @@ pub const Parser = struct {
                 const index: i32 = @intCast(i);
                 return index;
             }
+        }
+
+        return -1;
+    }
+
+    fn addUpvalue(self: *Self, compiler: *Compiler, idx: u8, isLocal: bool) i32 {
+        const upvalueCount = compiler.function.upvalueCount;
+        for (0..upvalueCount) |i| {
+            const uv = compiler.upvalues[i];
+            if (uv.index == i and uv.isLocal == isLocal) {
+                return @intCast(i);
+            }
+        }
+
+        if (upvalueCount == LOCAL_COUNT) {
+            self.err(.too_many_closure_variables_in_function);
+            return 0;
+        }
+
+        compiler.upvalues[upvalueCount].isLocal = isLocal;
+        compiler.upvalues[upvalueCount].index = idx;
+        compiler.function.upvalueCount += 1;
+        return @intCast(compiler.function.upvalueCount);
+    }
+
+    fn resolveUpvalue(self: *Self, compiler: *Compiler, name: *Token) i32 {
+        if (compiler.enclosing == null) {
+            return -1;
+        }
+
+        const local = self.resolveLocal(compiler, name);
+        if (local != -1) {
+            std.debug.print("found local: {}\n", .{local});
+            return self.addUpvalue(compiler, @intCast(local), true);
+        }
+
+        const uv = self.resolveUpvalue(compiler.enclosing.?, name);
+        if (uv != -1) {
+            std.debug.print("found uv: {}\n", .{uv});
+            return self.addUpvalue(compiler, @intCast(uv), false);
         }
 
         return -1;
@@ -915,6 +977,7 @@ pub const CompileError = struct {
 
         // Others
         too_many_local_variables_in_function,
+        too_many_closure_variables_in_function,
         too_many_parameters,
         too_many_arguments,
         too_many_constants_in_one_chunk,
@@ -954,6 +1017,7 @@ pub const CompileError = struct {
             .expect_identifier => std.debug.print("Expect identifier.\n", .{}),
             .expect_function_identifier => std.debug.print("Expect function identifier.\n", .{}),
             .too_many_local_variables_in_function => std.debug.print("Too many local variables in function.\n", .{}),
+            .too_many_closure_variables_in_function => std.debug.print("Too many closure variables in function.\n", .{}),
             .too_many_parameters => std.debug.print("Can't have more than 255 parameters.\n", .{}),
             .too_many_arguments => std.debug.print("Can't have more than 255 arguments.\n", .{}),
             .invalid_assignment_target => std.debug.print("Invalid assignment target.\n", .{}),
