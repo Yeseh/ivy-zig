@@ -1,5 +1,3 @@
-zig-cache/
-#$zig-out/
-#*.exe.obj
-#*.exe.vs/
+.zig-cache/
+zig-out
 design.txt
