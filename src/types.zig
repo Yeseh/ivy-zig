@@ -135,7 +135,7 @@ pub const String = extern struct {
     _len: usize,
     /// Internal capacity of the string. This should not be used directly, use `capacity()` instead.
     _capacity: usize,
-    hash: u32,
+    _hash: u32,
     /// Heap allocated buffer of characters, should not be accessed directly.
     _buf: [*]u8,
 
@@ -155,8 +155,8 @@ pub const String = extern struct {
             return interned.?;
         }
         var str = try String.create(alloc, chars);
-        str.hash = hsh;
-        _ = try table.set(str, IvyType.string(str));
+        str._hash = hsh;
+        _ = try table.set(str, IvyType.initString(str));
 
         return str;
     }
@@ -170,9 +170,9 @@ pub const String = extern struct {
             return interned.?;
         }
         var str = try String.copy(alloc, chars);
-        str.hash = hsh;
+        str._hash = hsh;
         // TODO: This should be IvyType.nil, but gets weird with global table
-        _ = try table.set(str, IvyType.string(str));
+        _ = try table.set(str, IvyType.initString(str));
 
         return str;
     }
@@ -311,31 +311,31 @@ pub const IvyType = union(enum) {
     // TODO: Change to *SpecificObjectType? Then we can switch on IvyType neatly;
     object: *Object,
 
-    pub fn boolean(b: bool) Self {
+    pub fn initBool(b: bool) Self {
         return Self{ .bool = b };
     }
 
-    pub fn nil() Self {
+    pub fn initNil() Self {
         return Self{ .nil = undefined };
     }
 
-    pub fn number(n: f64) Self {
+    pub fn initNumber(n: f64) Self {
         return Self{ .num = n };
     }
 
-    pub fn closure(cls: *Closure) Self {
+    pub fn initClosure(cls: *Closure) Self {
         return Self{ .object = @ptrCast(@alignCast(cls)) };
     }
 
-    pub fn string(str: *String) Self {
+    pub fn initString(str: *String) Self {
         return Self{ .object = @ptrCast(@alignCast(str)) };
     }
 
-    pub fn nativefn(str: *NativeFunction) Self {
+    pub fn initNativeFn(str: *NativeFunction) Self {
         return Self{ .object = @ptrCast(@alignCast(str)) };
     }
 
-    pub fn function(fun: *Function) Self {
+    pub fn initFunction(fun: *Function) Self {
         return Self{ .object = @ptrCast(@alignCast(fun)) };
     }
 
@@ -375,14 +375,14 @@ pub const IvyType = union(enum) {
 
     pub fn clone(self: *const Self, alloc: std.mem.Allocator) !Self {
         return switch (self.*) {
-            .num => IvyType.number(self.num),
-            .bool => IvyType.boolean(self.bool),
-            .nil => IvyType.nil(),
+            .num => IvyType.initNumber(self.num),
+            .bool => IvyType.initBool(self.bool),
+            .nil => IvyType.initNil(),
             .object => switch (self.object.ty) {
                 .String => blk: {
                     var str = self.object_as(String);
                     const copy = try String.copy(alloc, std.mem.sliceTo(str.allocatedSlice(), 0));
-                    break :blk IvyType.string(copy);
+                    break :blk IvyType.initString(copy);
                 },
                 // Clone function ?
                 else => unreachable,

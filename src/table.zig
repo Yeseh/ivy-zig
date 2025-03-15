@@ -142,7 +142,7 @@ pub fn findString(self: *Self, chars: []const u8, hash: u32) ?*String {
                 var key = entry.full.key.?;
                 const leneql = key._len == chars.len;
                 const memeql = std.mem.eql(u8, chars, key.asSlice());
-                const hasheql = key.hash == hash;
+                const hasheql = key._hash == hash;
 
                 if (leneql and hasheql and memeql)
                     return entry.full.value.object_as(String);
@@ -164,7 +164,7 @@ fn growCapacity(self: *Self) TableSize {
 }
 
 fn find(self: *Self, key: *String) Entry.Handle {
-    var index = key.hash % self.capacity;
+    var index = key._hash % self.capacity;
     var tombstone: ?Entry.Handle = null;
 
     while (true) {
